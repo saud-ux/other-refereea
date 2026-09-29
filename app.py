@@ -50,6 +50,13 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 # مع الاتصال المباشر ومع وسطاء الاتصال (pooler) في كلا وضعيهما.
 _USE_SCHEMA = bool(DB_SCHEMA) and db_url.startswith('postgresql')
 
+if db_url.startswith('postgresql'):
+    STORAGE = 'postgresql' + (' · مخطّط %s' % DB_SCHEMA if _USE_SCHEMA else '')
+    STORAGE_PERSISTENT = True
+else:
+    STORAGE = 'sqlite'
+    STORAGE_PERSISTENT = False   # ملف داخل الحاوية يُمحى عند كل إعادة تشغيل
+
 _secure_default = '1' if os.environ.get('RENDER') else '0'
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -207,7 +214,11 @@ def init_db(force=False):
         db.create_all()
         ensure_schema()
         _schema_ready = True
-        app.logger.info('قاعدة البيانات جاهزة')
+        app.logger.info('قاعدة البيانات جاهزة — التخزين: %s', STORAGE)
+        if not STORAGE_PERSISTENT:
+            app.logger.warning(
+                'تحذير: التخزين مؤقّت داخل الحاوية وسيُمحى عند إعادة التشغيل. '
+                'اضبط DATABASE_URL على قاعدة بيانات دائمة.')
     except Exception as exc:
         db.session.rollback()
         app.logger.error('تعذّر تجهيز قاعدة البيانات، ستُعاد المحاولة: %s', exc)
@@ -445,7 +456,8 @@ def health():
     except Exception:
         db.session.rollback()
         ok = False
-    r = jsonify(status='ok', db=ok, questions=QB.TOTAL)
+    r = jsonify(status='ok', db=ok, questions=QB.TOTAL,
+                storage=STORAGE, persistent=STORAGE_PERSISTENT)
     r.headers['Cache-Control'] = 'no-store'
     return r, 200
 
