@@ -9,6 +9,7 @@
 
 import json
 import os
+import re
 import random
 import time
 from collections import defaultdict
@@ -32,7 +33,21 @@ elif db_url.startswith('postgresql://') and '+psycopg' not in db_url:
     db_url = db_url.replace('postgresql://', 'postgresql+psycopg://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
+# يسمح بمشاركة قاعدة بيانات واحدة مع تطبيق آخر بوضع جداول هذا التطبيق
+# في مخطّط (schema) مستقل، فلا تتصادم أسماء الجداول.
+DB_SCHEMA = os.environ.get('DB_SCHEMA', '').strip()
+if DB_SCHEMA and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,62}', DB_SCHEMA):
+    raise SystemExit('DB_SCHEMA غير صالح: يجب أن يكون معرّفًا بسيطًا بالحروف والأرقام والشرطة السفلية.')
+
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,     # يتخلّص من الاتصالات الميتة بعد سبات القاعدة
+    'pool_recycle': 280,       # قواعد البيانات المجانية تقطع الاتصالات الخاملة
+    'pool_size': 3,
+    'max_overflow': 2,
+}
+if DB_SCHEMA and db_url.startswith('postgresql'):
+    app.config['SQLALCHEMY_ENGINE_OPTIONS']['connect_args'] = {
+        'options': '-csearch_path=%s,public' % DB_SCHEMA}
 
 _secure_default = '1' if os.environ.get('RENDER') else '0'
 app.config.update(
@@ -116,6 +131,7 @@ def ensure_schema():
     """يضيف الأعمدة الجديدة إلى جداول موجودة مسبقًا (create_all لا يعدّل الجداول)."""
     insp = db.inspect(db.engine)
     tables = set(insp.get_table_names())
+    added = False
     for table, cols in NEW_COLUMNS.items():
         if table not in tables:
             continue
@@ -126,11 +142,13 @@ def ensure_schema():
             try:
                 db.session.execute(db.text('ALTER TABLE "%s" ADD COLUMN %s %s' % (table, col, ddl)))
                 db.session.commit()
+                added = True
                 app.logger.info('added column %s.%s', table, col)
             except Exception as exc:  # عمود موجود أو صلاحيات ناقصة
                 db.session.rollback()
                 app.logger.warning('skip column %s.%s: %s', table, col, exc)
-    backfill()
+    if added:          # التعبئة تلزم مرة واحدة فقط بعد الترقية، لا في كل إقلاع
+        backfill()
 
 
 BACKFILL = [
@@ -160,9 +178,42 @@ def backfill():
             app.logger.warning('backfill skipped: %s', exc)
 
 
+_schema_ready = False
+_last_try = 0.0
+
+
+def init_db(force=False):
+    """يجهّز الجداول. لا يُسقِط التطبيق إذا كانت القاعدة نائمة أو غير متاحة
+    لحظة الإقلاع، بل يعيد المحاولة عند أول طلب لاحق."""
+    global _schema_ready, _last_try
+    if _schema_ready and not force:
+        return True
+    now = time.time()
+    if not force and now - _last_try < 10:
+        return False
+    _last_try = now
+    try:
+        if DB_SCHEMA and db_url.startswith('postgresql'):
+            db.session.execute(db.text('CREATE SCHEMA IF NOT EXISTS "%s"' % DB_SCHEMA))
+            db.session.commit()
+        db.create_all()
+        ensure_schema()
+        _schema_ready = True
+        app.logger.info('قاعدة البيانات جاهزة')
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.error('تعذّر تجهيز قاعدة البيانات، ستُعاد المحاولة: %s', exc)
+    return _schema_ready
+
+
+@app.before_request
+def _lazy_init():
+    if not _schema_ready:
+        init_db()
+
+
 with app.app_context():
-    db.create_all()
-    ensure_schema()
+    init_db()
     if app.config['SECRET_KEY'] == 'dev-change-me' and os.environ.get('RENDER'):
         app.logger.warning('SECRET_KEY غير مضبوط في بيئة الإنتاج!')
 
@@ -378,7 +429,17 @@ def icon():
 
 @app.get('/health')
 def health():
-    return 'ok', 200
+    """فحص خفيف يصلح لخدمات المراقبة: يلمس قاعدة البيانات ليمنع سباتها،
+    ويعيد 200 دائمًا حتى لا توقف منصّة الاستضافة الخدمة عند تعثّر القاعدة."""
+    ok = True
+    try:
+        db.session.execute(db.text('SELECT 1'))
+    except Exception:
+        db.session.rollback()
+        ok = False
+    r = jsonify(status='ok', db=ok, questions=QB.TOTAL)
+    r.headers['Cache-Control'] = 'no-store'
+    return r, 200
 
 
 # ─────────────────────────────────────────────────────────── الحساب
