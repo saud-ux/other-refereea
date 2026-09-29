@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 
 from flask import Flask, Response, jsonify, request, session
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import MetaData
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import questions as QB
@@ -45,9 +46,9 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_size': 3,
     'max_overflow': 2,
 }
-if DB_SCHEMA and db_url.startswith('postgresql'):
-    app.config['SQLALCHEMY_ENGINE_OPTIONS']['connect_args'] = {
-        'options': '-csearch_path=%s,public' % DB_SCHEMA}
+# نسمّي المخطّط صراحةً على الجداول بدل الاعتماد على search_path، فيعمل الربط
+# مع الاتصال المباشر ومع وسطاء الاتصال (pooler) في كلا وضعيهما.
+_USE_SCHEMA = bool(DB_SCHEMA) and db_url.startswith('postgresql')
 
 _secure_default = '1' if os.environ.get('RENDER') else '0'
 app.config.update(
@@ -59,7 +60,7 @@ app.config.update(
 )
 app.json.ensure_ascii = False
 
-db = SQLAlchemy(app)
+db = SQLAlchemy(app, metadata=MetaData(schema=DB_SCHEMA) if _USE_SCHEMA else MetaData())
 
 
 # ─────────────────────────────────────────────────────────── النماذج
@@ -127,20 +128,26 @@ NEW_COLUMNS = {
 }
 
 
+def _q(table):
+    """اسم الجدول مؤهَّلًا بالمخطّط عند استخدامه."""
+    return '"%s"."%s"' % (DB_SCHEMA, table) if _USE_SCHEMA else '"%s"' % table
+
+
 def ensure_schema():
     """يضيف الأعمدة الجديدة إلى جداول موجودة مسبقًا (create_all لا يعدّل الجداول)."""
     insp = db.inspect(db.engine)
-    tables = set(insp.get_table_names())
+    sch = DB_SCHEMA if _USE_SCHEMA else None
+    tables = set(insp.get_table_names(schema=sch))
     added = False
     for table, cols in NEW_COLUMNS.items():
         if table not in tables:
             continue
-        have = {c['name'] for c in insp.get_columns(table)}
+        have = {c['name'] for c in insp.get_columns(table, schema=sch)}
         for col, ddl in cols.items():
             if col in have:
                 continue
             try:
-                db.session.execute(db.text('ALTER TABLE "%s" ADD COLUMN %s %s' % (table, col, ddl)))
+                db.session.execute(db.text('ALTER TABLE %s ADD COLUMN %s %s' % (_q(table), col, ddl)))
                 db.session.commit()
                 added = True
                 app.logger.info('added column %s.%s', table, col)
@@ -153,25 +160,26 @@ def ensure_schema():
 
 BACKFILL = [
     # الصفوف القديمة لا تحمل عدّادات المشاهدة، فنشتقّها من البيانات المتاحة
-    '''UPDATE progress
+    '''UPDATE {progress}
          SET seen_count = CASE WHEN COALESCE(wrong_count,0)+COALESCE(correct_streak,0) > 0
                                THEN COALESCE(wrong_count,0)+COALESCE(correct_streak,0) ELSE 1 END,
              correct_count = COALESCE(correct_streak,0)
        WHERE COALESCE(seen_count,0) = 0
          AND (COALESCE(wrong_count,0) > 0 OR COALESCE(correct_streak,0) > 0
               OR last_correct IS NOT NULL)''',
-    'UPDATE progress SET bookmarked = FALSE WHERE bookmarked IS NULL',
-    'UPDATE "user" SET best_streak = streak WHERE COALESCE(best_streak,0) < COALESCE(streak,0)',
-    'UPDATE "user" SET public = TRUE WHERE public IS NULL',
-    "UPDATE test_result SET mode = 'mixed' WHERE mode IS NULL",
+    'UPDATE {progress} SET bookmarked = FALSE WHERE bookmarked IS NULL',
+    'UPDATE {user} SET best_streak = streak WHERE COALESCE(best_streak,0) < COALESCE(streak,0)',
+    'UPDATE {user} SET public = TRUE WHERE public IS NULL',
+    "UPDATE {test_result} SET mode = 'mixed' WHERE mode IS NULL",
 ]
 
 
 def backfill():
     """يملأ الأعمدة الجديدة للصفوف التي أُنشئت بالنسخة السابقة من التطبيق."""
+    names = {t: _q(t) for t in ('progress', 'user', 'test_result')}
     for sql in BACKFILL:
         try:
-            db.session.execute(db.text(sql))
+            db.session.execute(db.text(sql.format(**names)))
             db.session.commit()
         except Exception as exc:
             db.session.rollback()
@@ -193,7 +201,7 @@ def init_db(force=False):
         return False
     _last_try = now
     try:
-        if DB_SCHEMA and db_url.startswith('postgresql'):
+        if _USE_SCHEMA:
             db.session.execute(db.text('CREATE SCHEMA IF NOT EXISTS "%s"' % DB_SCHEMA))
             db.session.commit()
         db.create_all()
