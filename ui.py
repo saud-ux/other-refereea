@@ -215,13 +215,23 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .heat i.l1{background:#16a34a40;border-color:transparent}
 .heat i.l2{background:#16a34a80;border-color:transparent}
 .heat i.l3{background:var(--brand);border-color:transparent}
-.strip{display:grid;grid-template-columns:repeat(3,1fr);width:100%;gap:1px;cursor:pointer;
-  background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r);
-  overflow:hidden;margin-bottom:14px;padding:0;text-align:center;box-shadow:var(--shadow)}
-.strip span{display:block;background:var(--surface);padding:13px 6px}
+/* السهم وأثر الضغط هما ما يقول للمستخدم إن الشريط يفتح صفحة، فالجوال بلا تحويم */
+.strip{display:grid;grid-template-columns:repeat(3,1fr) auto;width:100%;cursor:pointer;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  overflow:hidden;margin-bottom:14px;padding:0;text-align:center;box-shadow:var(--shadow);
+  transition:border-color .12s, transform .08s}
+.strip span{display:block;padding:13px 6px;transition:background .12s}
+/* فاصل بين الأرقام وحدها، فلا يبدو السهم خانة رابعة فارغة */
+.strip span + span{border-inline-start:1px solid var(--line-soft)}
+.strip .go{border-inline-start:0}
 .strip b{display:block;font-size:21px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
 .strip small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.strip .go{display:grid;place-items:center;padding:0 12px;color:var(--brand)}
+:root[data-theme="dark"] .strip .go{color:var(--brand-2)}
+.strip .go .ic{width:19px;height:19px}
 .strip:hover{border-color:var(--brand)}
+.strip:active{transform:scale(.99)}
+.strip:active span{background:var(--surface-2)}
 .cfgline{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}
 .cfgline span{padding:5px 11px;border-radius:999px;background:var(--surface-2);
   color:var(--muted);font-size:12px;font-weight:600}
@@ -648,6 +658,7 @@ function tilesHTML(){
     ${cell(num(st.mastered),"متقن")}
     ${cell(num(st.due),"للمراجعة")}
     ${cell(pct(st.accuracy),"دقة")}
+    <span class="go">${ic("next")}</span>
   </button>`;
 }
 
