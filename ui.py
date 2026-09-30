@@ -215,6 +215,16 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .heat i.l1{background:#16a34a40;border-color:transparent}
 .heat i.l2{background:#16a34a80;border-color:transparent}
 .heat i.l3{background:var(--brand);border-color:transparent}
+.strip{display:grid;grid-template-columns:repeat(3,1fr);width:100%;gap:1px;cursor:pointer;
+  background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r);
+  overflow:hidden;margin-bottom:14px;padding:0;text-align:center;box-shadow:var(--shadow)}
+.strip span{display:block;background:var(--surface);padding:13px 6px}
+.strip b{display:block;font-size:21px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
+.strip small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.strip:hover{border-color:var(--brand)}
+.cfgline{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}
+.cfgline span{padding:5px 11px;border-radius:999px;background:var(--surface-2);
+  color:var(--muted);font-size:12px;font-weight:600}
 .empty{text-align:center;color:var(--muted);padding:34px 16px;font-size:14px}
 .empty .big{font-size:34px;display:block;margin-bottom:8px}
 .timer{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--brand)}
@@ -482,7 +492,7 @@ const Theme={
 matchMedia("(prefers-color-scheme:dark)").addEventListener("change",()=>{if(Theme.get()==="auto"){Theme.apply();R.render();}});
 
 /* ══════════════════ الحالة ══════════════════ */
-const S={me:null,view:"home",daily:null,dailyDone:false,dailyResult:null,
+const S={me:null,view:"home",daily:null,dailyDone:false,dailyResult:null,cfgOpen:false,
   test:null,tIdx:0,answers:[],timerId:null,remain:0,startedAt:0,result:null,
   cfg:{scope:"",count:10,timer:true,mode:"mixed"},
   study:{scope:"",filter:"all",search:"",items:[],open:null,loading:false},
@@ -526,7 +536,7 @@ const R={
     v();
   }
 };
-function mount(html){ $("#view").appendChild(el(html)); }
+function mount(html){ if(html) $("#view").appendChild(el(html)); }
 function themeBtn(){ const d=document.documentElement.dataset.theme==="dark";
   return `<button class="iconbtn" onclick="Theme.toggle()" title="تبديل المظهر" aria-label="تبديل المظهر">${ic(d?"sun":"moon")}</button>`; }
 function greet(){ const h=new Date().getHours();
@@ -628,45 +638,56 @@ function explainHTML(d,correct){
 
 /* ══════════════════ الرئيسية ══════════════════ */
 const VIEWS={};
+/* ثلاثة أرقام في سطر واحد، بلا عناوين ولا شروح. التفصيل مكانه صفحة الإحصائيات،
+   والشريط كله زر يفتحها. */
 function tilesHTML(){
   const st=S.me.stats;
-  return `<div class="tiles">
-    <div class="tile accent"><div class="k">${ic("check")} تم إتقانه</div>
-      <div class="v">${num(st.mastered)}</div><div class="d">من ${qty(st.total_questions,"q")}</div></div>
-    <div class="tile hot"><div class="k">${ic("flag")} يحتاج مراجعة</div>
-      <div class="v">${num(st.wrong)}</div><div class="d">${st.due?qty(st.due,"due"):"لا شيء مستحق اليوم"}</div></div>
-    <div class="tile"><div class="k">${ic("chart")} دقة الإجابات</div>
-      <div class="v">${pct(st.accuracy)}</div><div class="d">${st.answered?qty(st.answered,"answer"):"لم تجب بعد"}</div></div>
-    <div class="tile"><div class="k">${ic("timer")} اختبارات</div>
-      <div class="v">${num(st.tests)}</div><div class="d">${st.best_score!=null?"أفضل نتيجة "+num(st.best_score)+" من "+num(st.best_total):"لم تبدأ بعد"}</div></div>
+  if(!st.answered) return "";   // ثلاثة أصفار لا تفيد من لم يبدأ بعد
+  const cell=(v,l)=>`<span><b>${v}</b><small>${l}</small></span>`;
+  return `<button class="strip" onclick="R.go('stats')" aria-label="افتح الإحصائيات">
+    ${cell(num(st.mastered),"متقن")}
+    ${cell(num(st.due),"للمراجعة")}
+    ${cell(pct(st.accuracy),"دقة")}
+  </button>`;
+}
+
+/* ملخّص إعداد الاختبار في أربع كلمات، بدل صفّ رقائق يطلب قرارًا */
+function cfgSummary(){
+  const c=S.cfg, mode={mixed:"ذكي",random:"عشوائي",hard:"الأصعب"}[c.mode]||"ذكي";
+  return [esc(c.scope||""), qty(c.count,"q"), mode,
+          c.timer?qty(S.me.user.test_minutes,"min"):"بلا مؤقت"];
+}
+const cfgLine=()=>`<div class="cfgline">${cfgSummary().map(x=>`<span>${x}</span>`).join("")}</div>`;
+
+/* بطاقة البدء نفسها في الرئيسية وفي صفحة الاختبار، فلا يتعلّم المستخدم شكلين */
+function startCard(full){
+  const w=S.me.stats.wrong;
+  return `<div class="card">
+    <h3>ابدأ اختبارًا</h3>
+    ${cfgLine()}
+    <button class="btn primary block" onclick="Test.start()">${ic("play")} ابدأ الآن</button>
+    <div class="btnrow" style="margin-top:9px">
+      ${w?`<button class="btn soft" style="flex:1" onclick="Test.mistakes()">${ic("flag")} أخطائي (${num(w)})</button>`:""}
+      <button class="btn ghost" style="flex:1" onclick="${full?"S.cfgOpen=!S.cfgOpen;R.render()":"R.go('test')"}">
+        ${full&&S.cfgOpen?"إخفاء الإعدادات":"تخصيص"}</button>
+    </div>
+    ${full&&S.cfgOpen?cfgFields():""}
   </div>`;
 }
 function updateChrome(){
   R.paintNav();
-  const t=document.querySelector("#view .tiles");
-  if(t) t.outerHTML=tilesHTML();
+  const t=document.querySelector("#view .strip");
+  if(t){ const h=tilesHTML(); if(h) t.outerHTML=h; else t.remove(); }
+  else if(S.view==="home"&&tilesHTML()) R.render();   // ظهر الشريط بعد أول إجابة
   setSideMeta(S.me.stats);
 }
+/* سؤال اليوم أولًا لأنه سبب فتح التطبيق. ثم ثلاثة أرقام. ثم زر واحد.
+   «تقدّمك في المواد» حُذف من هنا: هو نفسه «الدقة حسب المادة» في الإحصائيات. */
 VIEWS.home=function(){
+  mount(`<div class="card" id="dailyCard"><div class="empty">جارٍ تحميل سؤال اليوم…</div></div>`);
   mount(tilesHTML());
-
-  mount(`<div class="cols">
-    <div class="card" id="dailyCard"><div class="empty">جارٍ تحميل سؤال اليوم…</div></div>
-    <div class="stack">
-      <div class="card">
-        <h3>ابدأ اختبارًا</h3><p class="sub">اختر عدد الأسئلة ثم انطلق، أو خصّص المادة والمؤقت من صفحة الاختبار.</p>
-        <div class="chiprow" style="margin-bottom:12px">
-          ${[5,10,20,30].map(n=>`<button class="chip ${S.cfg.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${qty(n,"q")}</button>`).join("")}
-        </div>
-        <button class="btn primary block" onclick="Test.start()">${ic("play")} ابدأ الآن</button>
-        <div class="btnrow" style="margin-top:9px">
-          <button class="btn soft" style="flex:1" onclick="Test.mistakes()">اختبرني بأخطائي</button>
-          <button class="btn ghost" style="flex:1" onclick="R.go('test')">تخصيص</button>
-        </div>
-      </div>
-      <div class="card" id="progCard"><h3>تقدّمك في المواد</h3><div class="empty">جارٍ التحميل…</div></div>
-    </div></div>`);
-  loadDaily(); loadHomeProgress();
+  mount(startCard(false));
+  loadDaily();
 };
 async function loadDaily(){
   const c=$("#dailyCard"); if(!c) return;
@@ -705,17 +726,6 @@ async function answerDaily(i){
       `<p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p>`;
     await refreshMe(); updateChrome();
   }catch(e){ S.dailyDone=false; toast(e.error||"تعذّر إرسال الإجابة","bad"); }
-}
-async function loadHomeProgress(){
-  const c=$("#progCard"); if(!c) return;
-  try{
-    const d=await api("/api/stats"); S.stats=d;
-    const rows=d.by_law.filter(r=>r.answered>0).sort((a,b)=>a.accuracy-b.accuracy).slice(0,4);
-    if(!rows.length){ c.innerHTML=`<h3>تقدّمك في المواد</h3><div class="empty">أجب عن بعض الأسئلة ليظهر تقدّمك هنا.</div>`; return; }
-    c.innerHTML=`<h3>تقدّمك في المواد</h3><p class="sub">أضعف أربع مواد لديك.</p>`+
-      rows.map(r=>meterHTML(r.title,r.accuracy)).join("")+
-      `<button class="btn ghost block sm" style="margin-top:14px" onclick="R.go('stats')">كل الإحصائيات</button>`;
-  }catch(e){ c.innerHTML=`<h3>تقدّمك في المواد</h3><div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
 }
 function meterHTML(title,v){
   return `<div class="meter"><div class="lab"><b>${esc(title)}</b><span>${pct(v)}</span></div>
@@ -796,12 +806,16 @@ function qItemHTML(q){
 VIEWS.test=function(){
   if(S.test){ return renderTestRun(); }
   if(S.result){ return renderResult(); }
+  mount(startCard(true));
+};
+
+/* حقول الإعداد: لا تُعرض إلا عند طلب التخصيص */
+function cfgFields(){
   const c=S.cfg;
-  mount(`<div class="cols"><div class="card">
-    <h3>إعدادات الاختبار</h3><p class="sub">النتيجة تُحتسب في إحصائياتك ولوحة الترتيب.</p>
+  return `<div class="divider"></div>
     <div class="field"><label for="cfgScope">المادة</label>
       <select id="cfgScope" onchange="S.cfg.scope=this.value">
-        ${S.me.scopes.map(s=>`<option ${s===c.scope?"selected":""}>${esc(s)}</option>`).join("")}</select></div>
+        ${S.me.scopes.map(x=>`<option ${x===c.scope?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
     <div class="field"><label>عدد الأسئلة</label>
       <div class="chiprow">${[5,10,20,30,50].map(n=>`<button class="chip ${c.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${num(n)}</button>`).join("")}</div></div>
     <div class="field"><label>طريقة الاختيار</label>
@@ -815,27 +829,7 @@ VIEWS.test=function(){
       <div class="chiprow">
         <button class="chip ${c.timer?"on":""}" onclick="S.cfg.timer=true;R.render()">مؤقت (${qty(S.me.user.test_minutes,"min")})</button>
         <button class="chip ${!c.timer?"on":""}" onclick="S.cfg.timer=false;R.render()">بدون مؤقت</button>
-      </div></div>
-    <button class="btn primary block" onclick="Test.start()">${ic("play")} ابدأ الاختبار</button>
-  </div>
-  <div class="stack">
-    <div class="card"><h3>مراجعة الأخطاء</h3>
-      <p class="sub">اختبار سريع من الأسئلة التي أخطأت فيها ولم تتقنها بعد.</p>
-      <button class="btn soft block" onclick="Test.mistakes()">${ic("flag")} اختبرني بأخطائي (${num(S.me.stats.wrong)})</button></div>
-    <div class="card" id="histCard"><h3>آخر الاختبارات</h3><div class="empty">جارٍ التحميل…</div></div>
-  </div></div>`);
-  loadHistoryCard();
-};
-async function loadHistoryCard(){
-  const c=$("#histCard"); if(!c) return;
-  try{
-    const d=S.stats||await api("/api/stats"); S.stats=d;
-    if(!d.history.length){ c.innerHTML=`<h3>آخر الاختبارات</h3><div class="empty">لم تخض أي اختبار بعد.</div>`; return; }
-    c.innerHTML=`<h3>آخر الاختبارات</h3>`+d.history.slice(0,6).map(h=>{
-      const good=h.total&&h.score/h.total>=.8;
-      return `<div class="lead"><span class="rank ${good?"g":""}">${num(h.score)}</span>
-        <b>${esc(h.scope)}</b><span>${esc(h.when)}</span></div>`;}).join("");
-  }catch(e){ c.innerHTML=`<h3>آخر الاختبارات</h3><div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
+      </div></div>`;
 }
 const Test={
   async start(over){
