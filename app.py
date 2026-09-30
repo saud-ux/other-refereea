@@ -13,7 +13,7 @@ import os
 import re
 import random
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import date, datetime, timedelta
 
 from flask import Flask, Response, jsonify, request, session
@@ -689,6 +689,49 @@ def delete_account():
     db.session.commit()
     session.clear()
     return jsonify(ok=True)
+
+
+# ──────────────────────────────────────────────── صفحات الكتاب صورةً
+BOOK_FILE = os.path.join(ICON_DIR, 'LOTG 2026-2027 Arabic.pdf')
+BOOK_PAGES = {q['page'] for q in QB.QUESTIONS if q.get('page')}
+PAGE_DPI = 140
+PAGE_CACHE_MAX = 24          # نحو ٦ ميغابايت، تكفي جلسة مذاكرة ولا تُثقل الذاكرة
+_page_cache = OrderedDict()
+_book = None
+
+
+def book():
+    """يُفتح الكتاب عند أول طلب فقط، فلا يؤخّر إقلاع التطبيق."""
+    global _book
+    if _book is None:
+        import pymupdf
+        _book = pymupdf.open(BOOK_FILE)
+    return _book
+
+
+@app.get('/api/page/<int:n>.png')
+def book_page(n):
+    u, err = need_user()
+    if err:
+        return err
+    if n not in BOOK_PAGES:      # لا تُخدم إلا الصفحات التي يشير إليها سؤال
+        return jsonify(error='صفحة غير متاحة.'), 404
+    png = _page_cache.get(n)
+    if png is None:
+        try:
+            import pymupdf
+            page = book()[n - 1]
+            png = page.get_pixmap(matrix=pymupdf.Matrix(PAGE_DPI / 72, PAGE_DPI / 72)).tobytes('png')
+        except Exception as exc:
+            app.logger.warning('تعذّر رسم الصفحة %s: %s', n, exc)
+            return jsonify(error='تعذّر عرض الصفحة.'), 503
+        _page_cache[n] = png
+        while len(_page_cache) > PAGE_CACHE_MAX:
+            _page_cache.popitem(last=False)
+    _page_cache.move_to_end(n)
+    r = Response(png, mimetype='image/png')
+    r.headers['Cache-Control'] = 'private, max-age=604800'
+    return r
 
 
 # ─────────────────────────────────────────────────────── الأسئلة واللعب

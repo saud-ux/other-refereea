@@ -241,6 +241,10 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .cfgline{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}
 .cfgline span{padding:5px 11px;border-radius:999px;background:var(--surface-2);
   color:var(--muted);font-size:12px;font-weight:600}
+.pageshot{margin-top:11px}
+.pageshot img{width:100%;display:block;border-radius:var(--r-md);border:1px solid var(--line);
+  background:#fff;margin-bottom:8px}
+.pageshot .hint{margin-bottom:8px}
 .empty{text-align:center;color:var(--muted);padding:34px 16px;font-size:14px}
 .empty .big{font-size:34px;display:block;margin-bottom:8px}
 .timer{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--brand)}
@@ -642,10 +646,33 @@ function optsHTML(q,handler,state){
       <span class="key">${key}</span><span>${esc(o)}</span></button>`;
   }).join("")+`</div>`;
 }
+/* صورة الصفحة تُحمّل عند الطلب فقط، فلا تُستهلك بيانات من لا يريدها */
+let _shotN=0;
+function pageShot(p){
+  if(!p) return "";
+  const id="shot"+(++_shotN);
+  return `<div class="pageshot" id="${id}">
+    <button class="btn ghost block sm" onclick="Shot.show('${id}',${p})">${ic("book")} صورة صفحة ${num(p)} من الكتاب</button>
+  </div>`;
+}
+const Shot={
+  show(id,p){
+    const b=document.getElementById(id); if(!b) return;
+    b.innerHTML=`<a href="/api/page/${p}.png" target="_blank" rel="noopener">
+        <img src="/api/page/${p}.png" alt="صفحة ${num(p)} من الكتاب" loading="lazy"></a>
+      <p class="hint">المس الصورة لفتحها بحجمها الكامل.</p>
+      <button class="btn ghost block sm" onclick="Shot.hide('${id}',${p})">إخفاء الصورة</button>`;
+  },
+  hide(id,p){
+    const b=document.getElementById(id); if(!b) return;
+    b.innerHTML=`<button class="btn ghost block sm" onclick="Shot.show('${id}',${p})">${ic("book")} صورة صفحة ${num(p)} من الكتاب</button>`;
+  }
+};
 function explainHTML(d,correct){
   return `<div class="explain"><b class="${correct?"":"no"}">${correct?"إجابة صحيحة ✓":"إجابة غير صحيحة"}</b>
     <p>${esc(d.explanation||d.exp||"")}</p>
-    <small><span>${esc(d.reference||d.ref||"")}</span>${(d.page)?"<span>صفحة "+num(d.page)+"</span>":""}</small></div>`;
+    <small><span>${esc(d.reference||d.ref||"")}</span>${(d.page)?"<span>صفحة "+num(d.page)+"</span>":""}</small>
+    ${pageShot(d.page)}</div>`;
 }
 
 /* ══════════════════ الرئيسية ══════════════════ */
@@ -820,7 +847,8 @@ function qItemHTML(q){
     </button>
     ${open?`<div class="det">${optsHTML(q,null,{correct:q.a,picked:-1})}
       <div class="explain"><p>${esc(q.exp)}</p>
-        <small><span>${esc(q.ref)}</span><span>صفحة ${num(q.page)}</span></small></div></div>`:""}
+        <small><span>${esc(q.ref)}</span><span>صفحة ${num(q.page)}</span></small>
+        ${pageShot(q.page)}</div></div>`:""}
   </div>`;
 }
 
@@ -945,7 +973,8 @@ function renderResult(){
       <div class="explain"><b class="no">إجابتك: ${esc(x.your)}</b>
         <p style="margin-top:6px"><b style="color:var(--ok)">الصحيح: ${esc(x.correct_answer)}</b></p>
         <p style="margin-top:6px">${esc(x.explanation)}</p>
-        <small><span>${esc(x.reference)}</span><span>صفحة ${num(x.page)}</span></small></div></div>`));
+        <small><span>${esc(x.reference)}</span><span>صفحة ${num(x.page)}</span></small>
+        ${pageShot(x.page)}</div></div>`));
   }else if(d.total){
     mount(`<div class="card"><div class="empty">${ic("check")}<p style="margin-top:8px">لا توجد أخطاء في الأسئلة التي أجبت عنها.</p></div></div>`);
   }
@@ -987,7 +1016,8 @@ const Mist={
             <b class="no">آخر إجابة خاطئة: ${esc(m.last_answer||"لم تُسجّل")}</b>
             <p style="margin-top:6px"><b style="color:var(--ok)">الصحيح: ${esc(m.correct_answer)}</b></p>
             <p style="margin-top:6px">${esc(m.exp)}</p>
-            <small><span>${esc(m.ref)}</span><span>صفحة ${num(m.page)}</span></small></div></div></div>`).join("");
+            <small><span>${esc(m.ref)}</span><span>صفحة ${num(m.page)}</span></small>
+            ${pageShot(m.page)}</div></div></div>`).join("");
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
   },
   toggle(id){ const d=document.getElementById("md-"+id); if(d) d.hidden=!d.hidden; }

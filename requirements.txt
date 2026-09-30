@@ -1,5 +1,6 @@
 Flask-SQLAlchemy==3.1.1
 Flask==3.0.3
+PyMuPDF==1.28.2
 SQLAlchemy==2.0.44
 Werkzeug==3.0.4
 cryptography==46.0.7
