@@ -836,7 +836,7 @@ function cfgFields(){
   const c=S.cfg;
   return `<div class="divider"></div>
     <div class="field"><label for="cfgScope">المادة</label>
-      <select id="cfgScope" onchange="S.cfg.scope=this.value">
+      <select id="cfgScope" onchange="S.cfg.scope=this.value;R.render()">
         ${S.me.scopes.map(x=>`<option ${x===c.scope?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
     <div class="field"><label>عدد الأسئلة</label>
       <div class="chiprow">${[5,10,20,30,50].map(n=>`<button class="chip ${c.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${num(n)}</button>`).join("")}</div></div>
