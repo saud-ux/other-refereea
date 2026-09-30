@@ -525,7 +525,7 @@ const A={
       await api(this.cur==="login"?"/api/login":"/api/register",{body});
       $("#authMsg").textContent=""; $("#p").value="";
       await boot();
-      toast(this.cur==="login"?"أهلًا بعودتك":"تم إنشاء حسابك، بالتوفيق","ok");
+      toast(this.cur==="login"?"تم تسجيل الدخول":"تم إنشاء الحساب","ok");
     }catch(err){ $("#authMsg").textContent=err.error||"تعذّر إتمام العملية."; }
     finally{ b.disabled=false; }
     return false;
@@ -620,7 +620,7 @@ async function loadDaily(){
   try{
     const d=await api("/api/daily");
     S.daily=d.question; S.dailyDone=!!d.answered; S.dailyResult=d.answered?d:null;
-    if(!S.daily){ c.innerHTML=`<div class="empty"><span class="big">🎉</span>أنهيت كل الأسئلة المتاحة اليوم.</div>`; return; }
+    if(!S.daily){ c.innerHTML=`<div class="empty">${ic("check")}<p style="margin-top:8px">أنهيت كل الأسئلة المتاحة اليوم.</p></div>`; return; }
     renderDaily();
   }catch(e){ c.innerHTML=`<div class="empty">${esc(e.error||"تعذّر تحميل سؤال اليوم")}</div>`; }
 }
@@ -797,7 +797,7 @@ const Test={
   async mistakes(){
     try{
       const d=await api("/api/test?mode=mistakes&count="+S.cfg.count);
-      if(!d.questions.length){ toast("لا توجد أخطاء تحتاج مراجعة 👏","ok"); return; }
+      if(!d.questions.length){ toast("لا توجد أخطاء تحتاج مراجعة","ok"); return; }
       begin(d,S.cfg.timer!==false);
     }catch(e){ toast(e.error||"تعذّر بدء المراجعة","bad"); }
   },
@@ -861,11 +861,10 @@ function renderTestRun(){
 }
 function renderResult(){
   const d=S.result, wrong=d.details.filter(x=>!x.correct), pctv=d.total?d.score/d.total*100:0;
-  const mood=pctv>=90?["🏆","ممتاز! أداء بطولي"]:pctv>=70?["👏","جيد جدًا، واصل"]:pctv>=50?["💪","لا بأس، المراجعة ستصنع الفرق"]:["📚","تحتاج مراجعة هذه المادة"];
+  const mood=pctv>=90?["نتيجة ممتازة"]:pctv>=70?["نتيجة جيدة"]:pctv>=50?["نتيجة متوسطة"]:["تحتاج مراجعة"];
   mount(`<div class="card" style="text-align:center">
-    <div style="font-size:40px">${mood[0]}</div>
-    <div class="score">${num(d.score)}<span style="font-size:22px;color:var(--muted)">/${num(d.asked||d.total)}</span></div>
-    <p class="sub" style="margin-top:8px">${mood[1]} · ${esc(d.scope||"")}</p>
+    <div class="score" style="margin-top:6px">${num(d.score)}<span style="font-size:22px;color:var(--muted)">/${num(d.asked||d.total)}</span></div>
+    <p class="sub" style="margin-top:8px">${mood[0]} · ${esc(d.scope||"")}</p>
     <div class="btnrow" style="justify-content:center;margin-top:6px">
       <button class="btn primary" onclick="S.result=null;Test.start()">${ic("refresh")} اختبار جديد</button>
       <button class="btn soft" onclick="Test.close()">العودة</button></div>
@@ -880,7 +879,7 @@ function renderResult(){
         <p style="margin-top:6px">${esc(x.explanation)}</p>
         <small>${esc(x.reference)} · صفحة ${num(x.page)}</small></div></div>`));
   }else if(d.total){
-    mount(`<div class="card"><div class="empty"><span class="big">✅</span>لا توجد أخطاء في الأسئلة التي أجبت عنها.</div></div>`);
+    mount(`<div class="card"><div class="empty">${ic("check")}<p style="margin-top:8px">لا توجد أخطاء في الأسئلة التي أجبت عنها.</p></div></div>`);
   }
 }
 document.addEventListener("keydown",e=>{
@@ -908,7 +907,7 @@ const Mist={
     const box=$("#mList"); if(!box) return;
     try{
       const d=await api("/api/mistakes"); S.mistakes=d.items;
-      if(!d.items.length){ box.innerHTML=`<div class="card"><div class="empty"><span class="big">👏</span>لا توجد أخطاء تحتاج مراجعة حاليًا.</div></div>`; return; }
+      if(!d.items.length){ box.innerHTML=`<div class="card"><div class="empty">${ic("check")}<p style="margin-top:8px">لا توجد أخطاء تحتاج مراجعة حاليًا.</p></div></div>`; return; }
       box.innerHTML=d.items.map(m=>`<div class="qitem">
         <button class="head" onclick="Mist.toggle('${m.qid}')">
           <div class="qi-body"><b>${esc(m.question)}</b>
