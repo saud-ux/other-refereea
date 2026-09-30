@@ -243,8 +243,19 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   color:var(--muted);font-size:12px;font-weight:600}
 .pageshot{margin-top:11px}
 .pageshot img{width:100%;display:block;border-radius:var(--r-md);border:1px solid var(--line);
-  background:#fff;margin-bottom:8px}
+  background:#fff;margin-bottom:8px;cursor:zoom-in}
 .pageshot .hint{margin-bottom:8px}
+/* عارض الصفحة: يملأ الشاشة، وشريطه العلوي ثابت فيه الرجوع والتكبير */
+.viewer{position:fixed;inset:0;z-index:120;background:var(--bg);display:flex;flex-direction:column}
+.vbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--surface);
+  border-bottom:1px solid var(--line)}
+.vbar b{font-size:14.5px}
+.vzoom{display:flex;gap:7px}
+.vzoom .iconbtn{width:36px;height:36px;font-size:19px;font-weight:700;line-height:1}
+.vbody{flex:1;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch}
+.vbody img{width:100%;display:block;margin-inline:auto;background:#fff;
+  border-radius:var(--r-md);border:1px solid var(--line)}
 .empty{text-align:center;color:var(--muted);padding:34px 16px;font-size:14px}
 .empty .big{font-size:34px;display:block;margin-bottom:8px}
 .timer{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--brand)}
@@ -655,19 +666,53 @@ function pageShot(p){
     <button class="btn ghost block sm" onclick="Shot.show('${id}',${p})">${ic("book")} صورة صفحة ${num(p)} من الكتاب</button>
   </div>`;
 }
+const ZOOMS=[1,1.8,2.6];
 const Shot={
+  open:false, page:0, z:0,
   show(id,p){
     const b=document.getElementById(id); if(!b) return;
-    b.innerHTML=`<a href="/api/page/${p}.png" target="_blank" rel="noopener">
-        <img src="/api/page/${p}.png" alt="صفحة ${num(p)} من الكتاب" loading="lazy"></a>
-      <p class="hint">المس الصورة لفتحها بحجمها الكامل.</p>
+    b.innerHTML=`<img src="/api/page/${p}.png" alt="صفحة ${num(p)} من الكتاب"
+        loading="lazy" onclick="Shot.full(${p})">
+      <p class="hint">المس الصورة لقراءتها بحجم أكبر.</p>
       <button class="btn ghost block sm" onclick="Shot.hide('${id}',${p})">إخفاء الصورة</button>`;
   },
   hide(id,p){
     const b=document.getElementById(id); if(!b) return;
     b.innerHTML=`<button class="btn ghost block sm" onclick="Shot.show('${id}',${p})">${ic("book")} صورة صفحة ${num(p)} من الكتاب</button>`;
+  },
+  /* العارض داخل التطبيق لا في تبويب جديد، فيبقى للمستخدم طريق رجوع */
+  full(p){
+    if(this.open) return;
+    this.open=true; this.page=p; this.z=0;
+    document.body.appendChild(el(`<div class="viewer" id="viewer">
+      <div class="vbar">
+        <button class="btn soft sm" onclick="history.back()">${ic("back")} رجوع</button>
+        <b>صفحة ${num(p)}</b>
+        <span class="vzoom">
+          <button class="iconbtn" onclick="Shot.zoom(-1)" aria-label="تصغير">−</button>
+          <button class="iconbtn" onclick="Shot.zoom(1)" aria-label="تكبير">+</button>
+        </span>
+      </div>
+      <div class="vbody" id="vbody"><img src="/api/page/${p}.png" alt="صفحة ${num(p)}"></div>
+    </div>`));
+    document.body.style.overflow="hidden";
+    history.pushState({shot:true},"");
+  },
+  zoom(d){
+    this.z=Math.min(ZOOMS.length-1,Math.max(0,this.z+d));
+    const i=document.querySelector("#vbody img");
+    if(i) i.style.width=(ZOOMS[this.z]*100)+"%";
+  },
+  close(){
+    if(!this.open) return;
+    this.open=false;
+    const v=document.getElementById("viewer"); if(v) v.remove();
+    document.body.style.overflow="";
   }
 };
+// زر رجوع الجهاز يغلق العارض بدل أن يخرج من الصفحة
+addEventListener("popstate",()=>Shot.close());
+addEventListener("keydown",e=>{ if(e.key==="Escape"&&Shot.open) history.back(); });
 function explainHTML(d,correct){
   return `<div class="explain"><b class="${correct?"":"no"}">${correct?"إجابة صحيحة ✓":"إجابة غير صحيحة"}</b>
     <p>${esc(d.explanation||d.exp||"")}</p>
