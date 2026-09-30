@@ -457,6 +457,9 @@ def ago(dt):
 # ─────────────────────────────────────────────── حد لمحاولات الدخول
 _attempts = defaultdict(list)
 MAX_TRIES, WINDOW = 12, 300
+# حدّ أوسع على الحساب نفسه مهما تعدّدت العناوين. أسماء المستخدمين ظاهرة في
+# لوحة الترتيب، فلا يكفي حدٌّ مرتبط بعنوان واحد.
+USER_TRIES, USER_WINDOW = 30, 900
 
 
 def client_ip():
@@ -464,11 +467,11 @@ def client_ip():
     return (fwd.split(',')[0].strip() if fwd else (request.remote_addr or '?'))
 
 
-def rate_limited(key):
+def rate_limited(key, tries=MAX_TRIES, window=WINDOW):
     now = time.time()
-    hits = [t for t in _attempts[key] if now - t < WINDOW]
+    hits = [t for t in _attempts[key] if now - t < window]
     _attempts[key] = hits
-    if len(hits) >= MAX_TRIES:
+    if len(hits) >= tries:
         return True
     hits.append(now)
     return False
@@ -570,15 +573,15 @@ def register():
     d = request.get_json(silent=True) or {}
     username = (d.get('username') or '').strip()
     pin = str(d.get('pin') or '')
-    name = (d.get('display_name') or '').strip()[:60]
     if len(username) < 3 or len(username) > 40:
         return jsonify(error='اسم المستخدم من 3 إلى 40 حرفًا.'), 400
     if not (4 <= len(pin) <= 8) or not pin.isdigit():
         return jsonify(error='كلمة المرور من 4 إلى 8 أرقام.'), 400
     if User.query.filter_by(username=username).first():
         return jsonify(error='اسم المستخدم مستخدم بالفعل.'), 409
+    # الاسم الظاهر يبدأ فارغًا، فيُعرض اسم المستخدم حتى يغيّره صاحبه من صفحة الحساب
     u = User(username=username, pin_hash=generate_password_hash(pin),
-             display_name=name or None, public=True, streak=0, best_streak=0)
+             display_name=None, public=True, streak=0, best_streak=0)
     db.session.add(u)
     db.session.commit()
     session.permanent = True
@@ -593,12 +596,14 @@ def login():
     username = (d.get('username') or '').strip()
     pin = str(d.get('pin') or '')
     key = client_ip() + '|' + username.lower()
-    if rate_limited(key):
+    ukey = 'user|' + username.lower()
+    if rate_limited(key) or rate_limited(ukey, USER_TRIES, USER_WINDOW):
         return jsonify(error='محاولات كثيرة. انتظر بضع دقائق ثم أعد المحاولة.'), 429
     u = User.query.filter_by(username=username).first()
     if not u or not check_password_hash(u.pin_hash, pin):
         return jsonify(error='اسم المستخدم أو كلمة المرور غير صحيحة.'), 401
     _attempts.pop(key, None)
+    _attempts.pop(ukey, None)
     session.permanent = True
     session['uid'] = u.id
     touch_streak(u)
@@ -620,7 +625,7 @@ def me():
     return jsonify(
         auth=True,
         user={'username': u.username, 'display_name': u.display_name or '', 'name': u.name,
-              'test_minutes': u.test_minutes or 10, 'public': bool(u.public),
+              'test_minutes': u.test_minutes or 10,
               'notify_on': bool(u.notify_on), 'notify_hour': u.notify_hour if u.notify_hour is not None else 20},
         stats=user_stats(u),
         scopes=[QB.ALL_SCOPE] + QB.CATEGORIES,
@@ -644,8 +649,6 @@ def settings():
         u.test_minutes = m
     if 'display_name' in d:
         u.display_name = ((d.get('display_name') or '').strip()[:60]) or None
-    if 'public' in d:
-        u.public = bool(d['public'])
     if 'notify_hour' in d:
         try:
             h = int(d['notify_hour'])
@@ -1005,7 +1008,7 @@ def leaderboard():
                              db.func.sum(Progress.seen_count).label('seen'),
                              db.func.sum(Progress.correct_count).label('ok'))
             .join(Progress, Progress.user_id == User.id)
-            .filter(User.public == True)  # noqa: E712
+            # لا استثناء: كل من أجاب عن سؤال يظهر في اللوحة
             .group_by(User.id, User.username, User.display_name)
             .order_by(db.text('m DESC'))
             .limit(25).all())
@@ -1023,7 +1026,7 @@ def leaderboard():
                          'accuracy': me_stats['accuracy'], 'me': True}
     me_info['listed'] = my_row is not None
     me_info['rank'] = (items.index(my_row) + 1) if my_row else None
-    return jsonify(items=items, me=me_info, hidden=not bool(u.public))
+    return jsonify(items=items, me=me_info)
 
 
 # ═════════════════════════════════ الإشعار اليومي ═════════════════════════════════

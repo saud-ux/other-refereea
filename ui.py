@@ -362,8 +362,6 @@ HTML = r'''<!doctype html>
     <form id="authForm" onsubmit="return A.submit(event)">
       <div class="field"><label for="u">اسم المستخدم</label>
         <input id="u" autocomplete="username" required minlength="3" placeholder="مثال: saud07"></div>
-      <div class="field" id="nameField" hidden><label for="dn">الاسم الظاهر (اختياري)</label>
-        <input id="dn" autocomplete="nickname" placeholder="يظهر في لوحة الترتيب"></div>
       <div class="field"><label for="p">كلمة المرور</label>
         <input id="p" type="password" inputmode="numeric" pattern="[0-9]*" required
                minlength="4" maxlength="8" placeholder="من 4 إلى 8 أرقام"
@@ -587,7 +585,6 @@ const A={
   mode(m){ this.cur=m;
     $("#tabLogin").classList.toggle("on",m==="login");
     $("#tabReg").classList.toggle("on",m==="register");
-    $("#nameField").hidden=m!=="register";
     $("#authBtn").textContent=m==="login"?"دخول":"إنشاء الحساب";
     $("#authMsg").textContent="";
   },
@@ -595,7 +592,6 @@ const A={
     e.preventDefault();
     const b=$("#authBtn"); b.disabled=true;
     const body={username:$("#u").value.trim(),pin:$("#p").value};
-    if(this.cur==="register") body.display_name=$("#dn").value.trim();
     try{
       await api(this.cur==="login"?"/api/login":"/api/register",{body});
       $("#authMsg").textContent=""; $("#p").value="";
@@ -1048,10 +1044,6 @@ VIEWS.board=function(){
       <div class="card"><h3>كيف يُحتسب الترتيب؟</h3>
         <p class="sub" style="margin:0">يُحتسب السؤال «متقنًا» عندما تجيب عنه إجابة صحيحة ثلاث مرات متتالية بعد أن أخطأت فيه، أو عندما تجيب عنه صحيحًا من أول مرة.
         الدقة هي نسبة إجاباتك الصحيحة من مجموع إجاباتك.</p>
-        <div class="divider"></div>
-        <p class="sub" style="margin:0">${d.hidden?"حسابك مخفي حاليًا من اللوحة.":"حسابك ظاهر في اللوحة."}
-        يمكنك تغيير ذلك من صفحة الحساب.</p>
-        <button class="btn ghost block sm" style="margin-top:12px" onclick="R.go('account')">إعدادات الظهور</button>
       </div></div>`;
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
   })();
@@ -1061,14 +1053,10 @@ VIEWS.board=function(){
 VIEWS.account=function(){
   const u=S.me.user;
   mount(`<div class="cols"><div class="stack">
-    <div class="card"><h3>الملف الشخصي</h3><p class="sub">الاسم الظاهر هو ما يراه الآخرون في لوحة الترتيب.</p>
+    <div class="card"><h3>الملف الشخصي</h3><p class="sub">اسمك يظهر في لوحة الترتيب. اتركه فارغًا ليظهر اسم المستخدم.</p>
       <div class="field"><label>اسم المستخدم</label><input value="${esc(u.username)}" disabled></div>
-      <div class="field"><label for="acName">الاسم الظاهر</label><input id="acName" maxlength="40" value="${esc(u.display_name||"")}" placeholder="${esc(u.username)}"></div>
+      <div class="field"><label for="acName">الاسم في اللوحة</label><input id="acName" maxlength="40" value="${esc(u.display_name||"")}" placeholder="${esc(u.username)}"></div>
       <div class="field"><label for="acMin">مدة الاختبار بالدقائق</label><input id="acMin" type="number" min="1" max="60" value="${u.test_minutes}"></div>
-      <div class="field"><label>الظهور في لوحة الترتيب</label>
-        <div class="chiprow">
-          <button class="chip ${u.public?"on":""}" onclick="Acc.pub(true)">ظاهر</button>
-          <button class="chip ${!u.public?"on":""}" onclick="Acc.pub(false)">مخفي</button></div></div>
       <button class="btn primary block" onclick="Acc.save()">حفظ التغييرات</button></div>
 
     <div class="card"><h3>تغيير كلمة المرور</h3><p class="sub">من 4 إلى 8 أرقام.</p>
@@ -1124,7 +1112,6 @@ function notifyBody(){
       <button class="btn ghost" onclick="Acc.notifyOff()">إيقاف الإشعار</button></div>`;
 }
 const Acc={
-  _pub:null,
   async notifyOn(){
     try{ await Push.enable(); await refreshMe(); R.render();
       toast("تم تفعيل الإشعار اليومي","ok"); }
@@ -1144,10 +1131,9 @@ const Acc={
       toast("وقت التذكير "+hourLabel(h),"ok"); }
     catch(e){ S.me.user.notify_hour=old; R.render(); toast(e.error||"تعذّر الحفظ","bad"); }
   },
-  pub(v){ S.me.user.public=v; R.render(); },
   theme(t){ try{localStorage.setItem("theme",t);}catch(e){} Theme.apply(); R.render(); },
   async save(){
-    const body={display_name:$("#acName").value.trim(),test_minutes:+$("#acMin").value,public:!!S.me.user.public};
+    const body={display_name:$("#acName").value.trim(),test_minutes:+$("#acMin").value};
     try{ await api("/api/settings",{body}); await refreshMe(); R.render();
       $("#sideName").textContent=S.me.user.name; $("#avatar").textContent=S.me.user.name.slice(0,2);
       toast("تم حفظ التغييرات","ok"); }
