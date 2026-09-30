@@ -1114,25 +1114,24 @@ def push_dispatch():
     """يُستدعى من مجدول خارجي كل ربع ساعة، ويرسل لمن حلّت ساعته ولم يُجب بعد."""
     if CRON_SECRET and request.headers.get('X-Cron-Secret', '') != CRON_SECRET:
         return jsonify(error='forbidden'), 403
-    today_utc = date.today()
+    # "اليوم" هنا هو يوم الخادم نفسه الذي يُبنى عليه سؤال اليوم، حتى لا يتذكّر
+    # المستخدم سؤالًا غير الذي سيراه. توقيت المستخدم يحدّد الساعة فقط.
+    today = date.today()
     sent = skipped = 0
     users = (User.query
              .filter(User.notify_on == True)  # noqa: E712
-             .filter(db.or_(User.notified_on == None, User.notified_on < today_utc))  # noqa: E711
+             .filter(db.or_(User.notified_on == None, User.notified_on != today))  # noqa: E711
              .all())
     for u in users:
-        now = local_now(u)
-        if now.hour != (u.notify_hour if u.notify_hour is not None else 20):
+        if local_now(u).hour != (u.notify_hour if u.notify_hour is not None else 20):
             continue
-        if u.notified_on == now.date():      # أُرسل اليوم بتوقيت المستخدم
-            continue
-        act = Activity.query.filter_by(user_id=u.id, day=now.date()).first()
+        act = Activity.query.filter_by(user_id=u.id, day=today).first()
         if act and act.answers:              # حلّ شيئًا اليوم، فلا داعي للتذكير
-            u.notified_on = now.date()
+            u.notified_on = today
             skipped += 1
             continue
         if send_to_user(u, daily_payload(u)):
-            u.notified_on = now.date()
+            u.notified_on = today
             sent += 1
         else:
             u.notify_on = bool(PushSub.query.filter_by(user_id=u.id).count())
