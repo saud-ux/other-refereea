@@ -232,14 +232,14 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .qitem .det .opts{margin-top:13px}
 
 /* ══════════════ التنبيهات والنوافذ ══════════════ */
-#toasts{position:fixed;inset-block-start:16px;inset-inline:0;z-index:90;display:flex;
-  flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 12px}
+#toasts{position:fixed;inset-block-end:24px;inset-inline:0;z-index:90;display:flex;
+  flex-direction:column-reverse;align-items:center;gap:8px;pointer-events:none;padding:0 12px}
 .toast{background:var(--surface);border:1px solid var(--line);border-radius:999px;
   padding:10px 18px;box-shadow:var(--shadow);font-size:13.5px;font-weight:600;
   animation:pop .25s ease;max-width:92vw}
 .toast.ok{border-color:var(--ok);color:var(--ok)}
 .toast.bad{border-color:var(--bad);color:var(--bad)}
-@keyframes pop{from{opacity:0;transform:translateY(-10px)}}
+@keyframes pop{from{opacity:0;transform:translateY(12px)}}
 .modal{position:fixed;inset:0;z-index:100;background:#0008;display:grid;place-items:center;padding:18px;
   backdrop-filter:blur(3px)}
 .modal .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -259,6 +259,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .tabbar .dot{position:absolute;top:2px;inset-inline-end:26%;width:7px;height:7px;border-radius:50%;background:var(--hot)}
 
 @media(max-width:940px){
+  #toasts{inset-block-end:calc(80px + env(safe-area-inset-bottom))}
   .shell{grid-template-columns:1fr}
   .side{display:none}
   .tabbar{display:grid}
