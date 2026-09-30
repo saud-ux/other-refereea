@@ -493,19 +493,57 @@ def service_worker():
     return r
 
 
+# صور الأيقونة جاهزة في جذر المستودع: أنظمة الجوال تعتمد على PNG أكثر من SVG،
+# وسفاري على آيفون لا يعرض غيرها في «إضافة إلى الشاشة الرئيسية».
+ICON_DIR = os.path.dirname(os.path.abspath(__file__))
+ICON_PNG = {}
+for _name in ('apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'):
+    try:
+        with open(os.path.join(ICON_DIR, _name), 'rb') as _f:
+            ICON_PNG[_name] = _f.read()
+    except OSError as _exc:
+        app.logger.warning('أيقونة ناقصة %s: %s', _name, _exc)
+
+
+def icon_response(body, mime):
+    """يخزَّن الرابط الموسوم بنسخته إلى الأبد، وغير الموسوم يُراجَع في كل مرة."""
+    r = Response(body, mimetype=mime)
+    if request.args.get('v') == ui.ICON_VER:
+        r.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    else:
+        r.headers['Cache-Control'] = 'no-cache'
+    return r
+
+
 @app.get('/icon.svg')
 def icon():
-    r = Response(ui.ICON_SVG, mimetype='image/svg+xml')
-    r.headers['Cache-Control'] = 'public, max-age=86400'
-    return r
+    return icon_response(ui.ICON_SVG, 'image/svg+xml')
 
 
 @app.get('/icon-maskable.svg')
 def icon_maskable():
     """نسخة تملأ الحافة، لأن أندرويد يقصّ أيقونة الشاشة الرئيسية دائريًا."""
-    r = Response(ui.ICON_MASKABLE_SVG, mimetype='image/svg+xml')
-    r.headers['Cache-Control'] = 'public, max-age=86400'
-    return r
+    return icon_response(ui.ICON_MASKABLE_SVG, 'image/svg+xml')
+
+
+@app.get('/apple-touch-icon.png')
+def apple_icon():
+    return icon_response(ICON_PNG.get('apple-touch-icon.png', b''), 'image/png')
+
+
+@app.get('/icon-192.png')
+def icon_192():
+    return icon_response(ICON_PNG.get('icon-192.png', b''), 'image/png')
+
+
+@app.get('/icon-512.png')
+def icon_512():
+    return icon_response(ICON_PNG.get('icon-512.png', b''), 'image/png')
+
+
+@app.get('/icon-maskable-512.png')
+def icon_maskable_512():
+    return icon_response(ICON_PNG.get('icon-maskable-512.png', b''), 'image/png')
 
 
 @app.get('/health')
