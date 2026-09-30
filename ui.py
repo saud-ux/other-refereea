@@ -566,7 +566,7 @@ function topBar(){
     mistakes:"الأسئلة التي أخطأت فيها ترجع لك بنظام مراجعة متباعدة حتى تتقنها",
     stats:"ملخّص أدائك منذ بداية الاشتراك",
     board:"الترتيب حسب عدد الأسئلة المتقنة",
-    account:"بياناتك وإعداداتك"};
+    account:"إعداداتك"};
   return `<div class="top">
     <div class="hello"><b>${titles[S.view]||""}</b><span>${esc(subs[S.view]||"")}</span></div>
     <div class="topacts">
@@ -1075,9 +1075,6 @@ VIEWS.account=function(){
     <div class="card"><h3>${ic("bell")} الإشعار اليومي</h3>
       <p class="sub">تذكير واحد كل يوم في الوقت الذي تختاره، ولا يصلك إذا كنت قد حللت سؤال اليوم.</p>
       ${notifyBody()}</div>
-
-    <div class="card"><h3>بياناتك</h3><p class="sub">نسخة كاملة من تقدّمك بصيغة JSON.</p>
-      <a class="btn soft block" href="/api/export" download>${ic("download")} تصدير التقدّم</a></div>
 
     <div class="card"><h3>الجلسة</h3>
       <button class="btn ghost block" onclick="logout()">${ic("logout")} تسجيل الخروج</button>

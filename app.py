@@ -700,34 +700,6 @@ def delete_account():
     return jsonify(ok=True)
 
 
-@app.get('/api/export')
-def export():
-    u, err = need_user()
-    if err:
-        return err
-    pmap = progress_map(u)
-    data = {
-        'exported_at': datetime.utcnow().isoformat() + 'Z',
-        'user': {'username': u.username,
-                 'streak': u.streak, 'best_streak': u.best_streak},
-        'stats': user_stats(u, pmap),
-        'progress': [{'qid': p.qid, 'question': QB.QMAP[p.qid]['q'] if p.qid in QB.QMAP else None,
-                      'seen': p.seen_count or 0, 'correct': p.correct_count or 0,
-                      'wrong': p.wrong_count or 0, 'mastered': bool(p.mastered),
-                      'bookmarked': bool(p.bookmarked),
-                      'next_due': p.next_due.isoformat() if p.next_due else None}
-                     for p in pmap.values()],
-        'tests': [{'score': t.score, 'total': t.total, 'scope': t.scope, 'mode': t.mode,
-                   'seconds': t.seconds_used, 'at': t.created_at.isoformat() + 'Z'}
-                  for t in TestResult.query.filter_by(user_id=u.id)
-                  .order_by(TestResult.created_at.desc()).all()],
-    }
-    r = Response(json.dumps(data, ensure_ascii=False, indent=2),
-                 mimetype='application/json; charset=utf-8')
-    r.headers['Content-Disposition'] = 'attachment; filename="lotg-progress.json"'
-    return r
-
-
 # ─────────────────────────────────────────────────────── الأسئلة واللعب
 @app.get('/api/daily')
 def daily():
