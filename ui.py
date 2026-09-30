@@ -182,7 +182,10 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .opt.right .key{background:var(--ok);color:#fff;border-color:var(--ok)}
 .opt.wrong{border-color:var(--bad);background:var(--bad-bg)}
 .opt.wrong .key{background:var(--bad);color:#fff;border-color:var(--bad)}
+/* المختار يتميّز برقمه الممتلئ، فلا يلتبس بحالة التحويم */
 .opt.picked{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
+.opt.picked .key{background:var(--brand);color:#fff;border-color:transparent}
+:root[data-theme="dark"] .opt.picked .key{background:var(--brand-2);color:#06210f}
 .explain{margin-top:13px;padding:13px 15px;border-radius:var(--r-md);background:var(--surface-2);
   border:1px solid var(--line-soft);font-size:13.5px;line-height:1.85}
 .explain b{color:var(--ok)}
@@ -648,12 +651,16 @@ async function logout(){
 }
 
 /* ══════════════════ عرض سؤال ══════════════════ */
-function optsHTML(q,handler,state){
+/* state يكشف الصواب والخطأ بعد انتهاء الاختبار.
+   sel يكتفي بإظهار ما اخترته، فيبقى تغييره ممكنًا ما دام الاختبار جاريًا. */
+function optsHTML(q,handler,state,sel){
   return `<div class="opts">`+q.options.map((o,i)=>{
     let cls="";
     if(state){ if(i===state.correct) cls="right"; else if(i===state.picked) cls="wrong"; }
+    else if(sel!=null&&i===sel) cls="picked";
     const key=state? (i===state.correct?"✓":num(i+1)) : num(i+1);
-    return `<button class="opt ${cls}" ${state?"disabled":""} ${handler?`onclick="${handler}(${i},this)"`:""}>
+    return `<button class="opt ${cls}" ${state?"disabled":""} ${handler?`onclick="${handler}(${i},this)"`:""}
+      ${!state&&sel!=null&&i===sel?'aria-pressed="true"':""}>
       <span class="key">${key}</span><span>${esc(o)}</span></button>`;
   }).join("")+`</div>`;
 }
@@ -942,18 +949,22 @@ const Test={
       begin(d,S.cfg.timer!==false);
     }catch(e){ toast(e.error||"تعذّر بدء المراجعة","bad"); }
   },
-  pick(i,node){
-    if(S.answers[S.tIdx]!=null) return;
-    S.answers[S.tIdx]={qid:S.test.questions[S.tIdx].id,choice:i};
-    [...node.parentNode.children].forEach(b=>b.disabled=true);
-    node.classList.add("picked");
-    const nb=$("#nextBtn"); nb.hidden=false; nb.focus();
+  pick(i){
+    const cur=S.answers[S.tIdx];
+    // اختيار الإجابة نفسها مرة أخرى يلغيها، فيمكن ترك السؤال بلا جواب
+    S.answers[S.tIdx]=(cur&&cur.choice===i)?null:{qid:S.test.questions[S.tIdx].id,choice:i};
+    R.render();
   },
-  next(){ if(S.answers[S.tIdx]==null) return;
+  prev(){ if(S.tIdx>0){ S.tIdx--; R.render(); } },
+  next(){
     if(S.tIdx===S.test.questions.length-1) return this.finish(false);
-    S.tIdx++; R.render(); },
+    S.tIdx++; R.render();
+  },
   async finish(manual){
-    if(manual && !await confirmBox("إنهاء الاختبار","سيتم تصحيح ما أجبت عنه فقط.","إنهاء")) return;
+    const left=S.test.questions.length-S.answers.filter(x=>x).length;
+    if(left && !await confirmBox("إنهاء الاختبار",
+        `بقي ${qty(left,"q")} بلا إجابة، وستُحتسب خاطئة. يمكنك الرجوع وإكمالها.`,"إنهاء")) return;
+    if(!left && manual && !await confirmBox("إنهاء الاختبار","سيُعرض التصحيح الآن.","إنهاء")) return;
     stopTimer();
     const answers=S.answers.filter(a=>a&&a.choice>=0);
     const payload={scope:S.test.scope,answers,seconds_used:Math.floor((Date.now()-S.startedAt)/1000),
@@ -980,7 +991,7 @@ function tick(){ const t=$("#timer"); if(!t) return;
   t.classList.toggle("warn",S.remain<=60); }
 function renderTestRun(){
   const t=S.test,q=t.questions[S.tIdx],n=t.questions.length;
-  const done=S.answers.filter(a=>a).length;
+  const a=S.answers[S.tIdx], done=S.answers.filter(x=>x).length;
   mount(`<div class="card">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px">
       <div><div class="badge">${esc(t.scope)}</div>
@@ -988,14 +999,17 @@ function renderTestRun(){
       ${S.useTimer?`<div style="text-align:start"><div style="font-size:11px;color:var(--muted)">الوقت المتبقي</div>
         <div class="timer" id="timer">--:--</div></div>`:`<div class="badge dim">بدون مؤقت</div>`}
     </div>
-    <div class="prog" style="margin-bottom:16px"><i style="width:${Math.round(done/n*100)}%"></i></div>
+    <div class="prog" style="margin-bottom:6px"><i style="width:${Math.round(done/n*100)}%"></i></div>
+    <div class="hint" style="margin-bottom:14px">أجبت عن ${num(done)} من ${num(n)}</div>
     <p class="qtext">${esc(q.q)}</p>
-    ${optsHTML(q,"Test.pick")}
-    <div class="btnrow" style="margin-top:16px;justify-content:space-between">
-      <button class="btn ghost sm" onclick="Test.finish(true)">إنهاء الاختبار</button>
-      <button class="btn primary" id="nextBtn" hidden onclick="Test.next()">
-        ${S.tIdx===n-1?"إظهار النتيجة":"السؤال التالي"} ${ic("next")}</button>
+    ${optsHTML(q,"Test.pick",null,a?a.choice:null)}
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn soft" style="flex:1" id="prevBtn" ${S.tIdx===0?"disabled":""}
+        onclick="Test.prev()">${ic("back")} السابق</button>
+      <button class="btn primary" style="flex:1" id="nextBtn" onclick="Test.next()">
+        ${S.tIdx===n-1?"إظهار النتيجة":"التالي"} ${ic("next")}</button>
     </div>
+    <button class="btn ghost block sm" style="margin-top:9px" onclick="Test.finish(true)">إنهاء الاختبار الآن</button>
   </div>`);
   tick();
 }
@@ -1028,8 +1042,9 @@ document.addEventListener("keydown",e=>{
   if(!S.test) return;
   const q=S.test.questions[S.tIdx];
   if(e.key>="1"&&e.key<="9"){
-    const i=+e.key-1; if(i<q.options.length){ const b=document.querySelectorAll(".opts .opt")[i]; if(b&&!b.disabled) b.click(); }
-  } else if(e.key==="Enter"){ const nb=$("#nextBtn"); if(nb&&!nb.hidden) nb.click(); }
+    const i=+e.key-1; if(i<q.options.length) Test.pick(i);
+  } else if(e.key==="Enter"||e.key==="ArrowLeft"){ Test.next(); }
+  else if(e.key==="ArrowRight"){ Test.prev(); }
 });
 '''
 
