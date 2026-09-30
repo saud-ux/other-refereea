@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""قوانين اللعبة — منصّة إعداد الحكّام.
+"""قوانين اللعبة.
 
 تطبيق فلاسك بملفات في جذر المستودع فقط:
     app.py        الخادم وواجهات البيانات
@@ -51,7 +51,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 _USE_SCHEMA = bool(DB_SCHEMA) and db_url.startswith('postgresql')
 
 if db_url.startswith('postgresql'):
-    STORAGE = 'postgresql' + (' · مخطّط %s' % DB_SCHEMA if _USE_SCHEMA else '')
+    STORAGE = 'postgresql' + (' مخطّط %s' % DB_SCHEMA if _USE_SCHEMA else '')
     STORAGE_PERSISTENT = True
 else:
     STORAGE = 'sqlite'
@@ -216,7 +216,7 @@ def init_db(force=False):
         db.create_all()
         ensure_schema()
         _schema_ready = True
-        app.logger.info('قاعدة البيانات جاهزة — التخزين: %s', STORAGE)
+        app.logger.info('قاعدة البيانات جاهزة، التخزين: %s', STORAGE)
         if not STORAGE_PERSISTENT:
             app.logger.warning(
                 'تحذير: التخزين مؤقّت داخل الحاوية وسيُمحى عند إعادة التشغيل. '

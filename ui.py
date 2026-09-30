@@ -111,7 +111,7 @@ input[type=number]{-moz-appearance:textfield}
 .avatar{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;
   background:linear-gradient(140deg,#34d399,#0ea5e9);color:#04231a;font-weight:700;font-size:13px}
 .userchip b{font-size:13.5px;display:block}
-.userchip small{color:var(--muted);font-size:11px}
+.userchip small{display:flex;flex-wrap:wrap;gap:2px 10px;color:var(--muted);font-size:11px}
 .content{min-width:0;display:flex;flex-direction:column}
 main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 
@@ -153,6 +153,8 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   padding:5px 11px;border-radius:999px;background:#16a34a1a;color:var(--brand);margin-bottom:11px}
 :root[data-theme="dark"] .badge{background:#a3e6351a;color:var(--brand-2)}
 .badge.dim{background:var(--surface-2);color:var(--muted)}
+.badgerow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.badgerow .badge{margin-bottom:11px}
 .qtext{font-size:17.5px;font-weight:600;line-height:1.85;margin:0 0 15px}
 .opts{display:grid;gap:9px}
 .opt{display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:13px;width:100%;
@@ -168,10 +170,10 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .opt.wrong .key{background:var(--bad);color:#fff;border-color:var(--bad)}
 .opt.picked{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
 .explain{margin-top:13px;padding:13px 15px;border-radius:13px;background:var(--surface-2);
-  border:1px solid var(--line-soft);border-inline-start:3px solid var(--brand);font-size:13.5px;line-height:1.85}
+  border:1px solid var(--line-soft);font-size:13.5px;line-height:1.85}
 .explain b{color:var(--ok)}
 .explain b.no{color:var(--bad)}
-.explain small{display:block;margin-top:7px;color:var(--muted);font-size:11.5px}
+.explain small{display:flex;flex-wrap:wrap;gap:2px 16px;margin-top:7px;color:var(--muted);font-size:11.5px}
 
 /* ══════════════ عناصر مساعدة ══════════════ */
 .chiprow{display:flex;gap:7px;flex-wrap:wrap}
@@ -197,6 +199,9 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .lead b{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lead span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
 .lead.me{background:var(--surface-2);border-radius:11px;padding:10px;border-bottom:0;margin-top:6px}
+.lead .you{flex:none;padding:2px 8px;border-radius:999px;background:var(--brand);color:#fff;
+  font-size:10.5px;font-weight:700}
+:root[data-theme="dark"] .lead .you{background:var(--brand-2);color:#06210f}
 .heat{display:grid;grid-template-columns:repeat(14,1fr);gap:4px}
 .heat i{aspect-ratio:1;border-radius:4px;background:var(--surface-2);border:1px solid var(--line-soft)}
 .heat i.l1{background:#16a34a40;border-color:transparent}
@@ -282,7 +287,7 @@ HTML = r'''<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#071410">
 <meta name="description" content="منصّة تدريب الحكّام على قوانين كرة القدم: مذاكرة واختبارات ومراجعة ذكية للأخطاء.">
-<title>قوانين اللعبة — منصّة إعداد الحكّام</title>
+<title>قوانين اللعبة</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -337,7 +342,7 @@ HTML = r'''<!doctype html>
     <div class="sidefoot">
       <button class="userchip" onclick="R.go('account')">
         <div class="avatar" id="avatar"></div>
-        <div><b id="sideName">—</b><small id="sideMeta">—</small></div>
+        <div><b id="sideName"></b><small id="sideMeta"></small></div>
       </button>
     </div>
   </aside>
@@ -547,8 +552,12 @@ async function boot(){
   const nm=me.user.name||me.user.username;
   $("#avatar").textContent=nm.slice(0,2);
   $("#sideName").textContent=nm;
-  $("#sideMeta").textContent=`${num(me.stats.mastered)} متقن · ${pct(me.stats.accuracy)} دقة`;
+  setSideMeta(me.stats);
   R.render();
+}
+function setSideMeta(st){
+  const m=$("#sideMeta"); if(!m||!st) return;
+  m.innerHTML=`<span>${num(st.mastered)} متقن</span><span>${pct(st.accuracy)} دقة</span>`;
 }
 async function refreshMe(){ try{ S.me=await api("/api/me"); }catch(e){} }
 async function logout(){
@@ -570,7 +579,7 @@ function optsHTML(q,handler,state){
 function explainHTML(d,correct){
   return `<div class="explain"><b class="${correct?"":"no"}">${correct?"إجابة صحيحة ✓":"إجابة غير صحيحة"}</b>
     <p>${esc(d.explanation||d.exp||"")}</p>
-    <small>${esc(d.reference||d.ref||"")}${(d.page)?" · صفحة "+num(d.page):""}</small></div>`;
+    <small><span>${esc(d.reference||d.ref||"")}</span>${(d.page)?"<span>صفحة "+num(d.page)+"</span>":""}</small></div>`;
 }
 
 /* ══════════════════ الرئيسية ══════════════════ */
@@ -585,15 +594,14 @@ function tilesHTML(){
     <div class="tile"><div class="k">${ic("chart")} دقة الإجابات</div>
       <div class="v">${pct(st.accuracy)}</div><div class="d">${num(st.answered)} إجابة</div></div>
     <div class="tile"><div class="k">${ic("timer")} اختبارات</div>
-      <div class="v">${num(st.tests)}</div><div class="d">${st.best_score!=null?"أفضل نتيجة "+num(st.best_score)+"/"+num(st.best_total):"لم تبدأ بعد"}</div></div>
+      <div class="v">${num(st.tests)}</div><div class="d">${st.best_score!=null?"أفضل نتيجة "+num(st.best_score)+" من "+num(st.best_total):"لم تبدأ بعد"}</div></div>
   </div>`;
 }
 function updateChrome(){
   R.paintNav();
   const t=document.querySelector("#view .tiles");
   if(t) t.outerHTML=tilesHTML();
-  const m=$("#sideMeta");
-  if(m) m.textContent=`${num(S.me.stats.mastered)} متقن · ${pct(S.me.stats.accuracy)} دقة`;
+  setSideMeta(S.me.stats);
 }
 VIEWS.home=function(){
   mount(tilesHTML());
@@ -626,8 +634,9 @@ async function loadDaily(){
   }catch(e){ c.innerHTML=`<div class="empty">${esc(e.error||"تعذّر تحميل سؤال اليوم")}</div>`; }
 }
 function dailyHead(q){
-  return `<div class="badge">${ic("spark")} سؤال اليوم · ${esc(q.category)}</div>
-    ${q.topic?`<div class="badge dim" style="margin-inline-start:6px">${esc(q.topic)}</div>`:""}
+  return `<div class="badgerow"><div class="badge">${ic("spark")} سؤال اليوم</div>
+    <div class="badge dim">${esc(q.category)}</div>
+    ${q.topic?`<div class="badge dim">${esc(q.topic)}</div>`:""}</div>
     <p class="qtext">${esc(q.q)}</p>`;
 }
 function renderDaily(){
@@ -734,7 +743,8 @@ function qItemHTML(q){
       <span class="star ${q.saved?"on":""}" onclick="Study.star('${q.id}',event)" title="المفضلة">${ic("star")}</span>
     </button>
     ${open?`<div class="det">${optsHTML(q,null,{correct:q.a,picked:-1})}
-      <div class="explain"><p>${esc(q.exp)}</p><small>${esc(q.ref)} · صفحة ${num(q.page)}</small></div></div>`:""}
+      <div class="explain"><p>${esc(q.exp)}</p>
+        <small><span>${esc(q.ref)}</span><span>صفحة ${num(q.page)}</span></small></div></div>`:""}
   </div>`;
 }
 
@@ -856,7 +866,7 @@ function renderTestRun(){
       <button class="btn primary" id="nextBtn" hidden onclick="Test.next()">
         ${S.tIdx===n-1?"إظهار النتيجة":"السؤال التالي"} ${ic("next")}</button>
     </div>
-    <div class="hint" style="margin-top:10px">اختصار: اضغط الأرقام ${num(1)}–${num(q.options.length)} للاختيار، و Enter للانتقال.</div>
+    <div class="hint" style="margin-top:10px">اختصار: اضغط الأرقام من ${num(1)} إلى ${num(q.options.length)} للاختيار، و Enter للانتقال.</div>
   </div>`);
   tick();
 }
@@ -864,8 +874,9 @@ function renderResult(){
   const d=S.result, wrong=d.details.filter(x=>!x.correct), pctv=d.total?d.score/d.total*100:0;
   const mood=pctv>=90?["نتيجة ممتازة"]:pctv>=70?["نتيجة جيدة"]:pctv>=50?["نتيجة متوسطة"]:["تحتاج مراجعة"];
   mount(`<div class="card" style="text-align:center">
-    <div class="score" style="margin-top:6px">${num(d.score)}<span style="font-size:22px;color:var(--muted)">/${num(d.asked||d.total)}</span></div>
-    <p class="sub" style="margin-top:8px">${mood[0]} · ${esc(d.scope||"")}</p>
+    <div class="score" style="margin-top:6px">${num(d.score)}<span style="font-size:22px;color:var(--muted)"> من ${num(d.asked||d.total)}</span></div>
+    <p class="sub" style="margin-top:8px">${mood[0]}</p>
+    ${d.scope?`<div class="badge dim" style="margin-bottom:14px">${esc(d.scope)}</div>`:""}
     <div class="btnrow" style="justify-content:center;margin-top:6px">
       <button class="btn primary" onclick="S.result=null;Test.start()">${ic("refresh")} اختبار جديد</button>
       <button class="btn soft" onclick="Test.close()">العودة</button></div>
@@ -878,7 +889,7 @@ function renderResult(){
       <div class="explain"><b class="no">إجابتك: ${esc(x.your)}</b>
         <p style="margin-top:6px"><b style="color:var(--ok)">الصحيح: ${esc(x.correct_answer)}</b></p>
         <p style="margin-top:6px">${esc(x.explanation)}</p>
-        <small>${esc(x.reference)} · صفحة ${num(x.page)}</small></div></div>`));
+        <small><span>${esc(x.reference)}</span><span>صفحة ${num(x.page)}</span></small></div></div>`));
   }else if(d.total){
     mount(`<div class="card"><div class="empty">${ic("check")}<p style="margin-top:8px">لا توجد أخطاء في الأسئلة التي أجبت عنها.</p></div></div>`);
   }
@@ -917,10 +928,10 @@ const Mist={
               ${m.next_due?`<span>المراجعة ${esc(m.next_due)}</span>`:""}</div></div></button>
         <div class="det" id="md-${m.qid}" hidden>
           <div class="explain" style="margin-top:13px">
-            <b class="no">آخر إجابة خاطئة: ${esc(m.last_answer||"—")}</b>
+            <b class="no">آخر إجابة خاطئة: ${esc(m.last_answer||"لم تُسجّل")}</b>
             <p style="margin-top:6px"><b style="color:var(--ok)">الصحيح: ${esc(m.correct_answer)}</b></p>
             <p style="margin-top:6px">${esc(m.exp)}</p>
-            <small>${esc(m.ref)} · صفحة ${num(m.page)}</small></div></div></div>`).join("");
+            <small><span>${esc(m.ref)}</span><span>صفحة ${num(m.page)}</span></small></div></div></div>`).join("");
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
   },
   toggle(id){ const d=document.getElementById("md-"+id); if(d) d.hidden=!d.hidden; }
@@ -938,7 +949,7 @@ VIEWS.stats=function(){
         <div class="tile accent"><div class="k">${ic("chart")} الدقة الكلّية</div><div class="v">${pct(o.accuracy)}</div><div class="d">${num(o.answered)} إجابة</div></div>
         <div class="tile"><div class="k">${ic("check")} تم إتقانه</div><div class="v">${num(o.mastered)}</div><div class="d">من ${num(o.total_questions)} سؤالًا</div></div>
         <div class="tile hot"><div class="k">🔥 أطول سلسلة</div><div class="v">${num(o.best_streak)}</div><div class="d">يومًا متتاليًا</div></div>
-        <div class="tile"><div class="k">${ic("timer")} متوسط الاختبار</div><div class="v">${o.avg_test!=null?pct(o.avg_test):"—"}</div><div class="d">${num(o.tests)} اختبارًا</div></div>
+        <div class="tile"><div class="k">${ic("timer")} متوسط الاختبار</div><div class="v">${o.avg_test!=null?pct(o.avg_test):"لا يوجد"}</div><div class="d">${num(o.tests)} اختبارًا</div></div>
       </div>
       <div class="cols">
         <div class="stack">
@@ -974,10 +985,11 @@ VIEWS.board=function(){
         <h3>الأكثر إتقانًا</h3><p class="sub">عدد الأسئلة التي أتقنها كل حكم.</p>
         ${d.items.length?d.items.map((x,i)=>`<div class="lead ${x.me?"me":""}">
           <span class="rank ${medal(i)}">${num(i+1)}</span>
-          <b>${esc(x.name)}${x.me?" — أنت":""}</b>
-          <span>${num(x.mastered)} متقن · ${pct(x.accuracy)}</span></div>`).join(""):`<div class="empty">لا توجد نتائج بعد.</div>`}
-        ${d.me&&!d.me.listed?`<div class="lead me"><span class="rank">${d.me.rank?num(d.me.rank):"—"}</span>
-          <b>${esc(d.me.name)} — أنت</b><span>${num(d.me.mastered)} متقن</span></div>`:""}
+          <b>${esc(x.name)}</b>${x.me?`<span class="you">أنت</span>`:""}
+          <span>${num(x.mastered)} متقن</span><span>${pct(x.accuracy)}</span></div>`).join(""):`<div class="empty">لا توجد نتائج بعد.</div>`}
+        ${d.me&&!d.me.listed?`<div class="lead me"><span class="rank">${d.me.rank?num(d.me.rank):"؟"}</span>
+          <b>${esc(d.me.name)}</b><span class="you">أنت</span>
+          <span>${num(d.me.mastered)} متقن</span></div>`:""}
       </div>
       <div class="card"><h3>كيف يُحتسب الترتيب؟</h3>
         <p class="sub" style="margin:0">يُحتسب السؤال «متقنًا» عندما تجيب عنه إجابة صحيحة ثلاث مرات متتالية بعد أن أخطأت فيه، أو عندما تجيب عنه صحيحًا من أول مرة.
@@ -1067,7 +1079,7 @@ boot();
 '''
 
 MANIFEST = {
-    "name": "قوانين اللعبة — منصّة إعداد الحكّام",
+    "name": "قوانين اللعبة",
     "short_name": "قوانين اللعبة",
     "description": "مذاكرة واختبارات ومراجعة ذكية لقوانين كرة القدم.",
     "lang": "ar", "dir": "rtl",
