@@ -485,6 +485,14 @@ def icon():
     return r
 
 
+@app.get('/icon-maskable.svg')
+def icon_maskable():
+    """نسخة تملأ الحافة، لأن أندرويد يقصّ أيقونة الشاشة الرئيسية دائريًا."""
+    r = Response(ui.ICON_MASKABLE_SVG, mimetype='image/svg+xml')
+    r.headers['Cache-Control'] = 'public, max-age=86400'
+    return r
+
+
 @app.get('/health')
 def health():
     """فحص خفيف يصلح لخدمات المراقبة: يلمس قاعدة البيانات ليمنع سباتها،
