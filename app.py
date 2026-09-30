@@ -423,7 +423,16 @@ def user_stats(u, pmap=None):
     }
 
 
+AR_DIGITS = str.maketrans('0123456789', '٠١٢٣٤٥٦٧٨٩')
+
+
+def ar(n):
+    """الأرقام بالصيغة العربية الهندية، كما تعرضها بقية الواجهة."""
+    return str(n).translate(AR_DIGITS)
+
+
 def ago(dt):
+    """صياغة المدة مع مراعاة تمييز العدد: مفرد، مثنى، جمع قلّة، ثم مفرد منصوب."""
     d = (datetime.utcnow() - dt).days
     if d <= 0:
         return 'اليوم'
@@ -432,11 +441,17 @@ def ago(dt):
     if d == 2:
         return 'قبل يومين'
     if d < 11:
-        return 'قبل %d أيام' % d
+        return 'قبل %s أيام' % ar(d)
     if d < 30:
-        return 'قبل %d يومًا' % d
+        return 'قبل %s يومًا' % ar(d)
     m = d // 30
-    return 'قبل شهر' if m == 1 else 'قبل %d أشهر' % m
+    if m == 1:
+        return 'قبل شهر'
+    if m == 2:
+        return 'قبل شهرين'
+    if m < 11:
+        return 'قبل %s أشهر' % ar(m)
+    return 'قبل %s شهرًا' % ar(m)
 
 
 # ─────────────────────────────────────────────── حد لمحاولات الدخول
@@ -876,7 +891,7 @@ ACHIEVEMENTS = [
     ('m25',      '📗', 'حافظ القانون',    'أتقن ٢٥ سؤالًا',                   lambda s: s['mastered'] >= 25),
     ('m100',     '📚', 'خبير القوانين',   'أتقن ١٠٠ سؤال',                    lambda s: s['mastered'] >= 100),
     ('m250',     '🧠', 'مرجع',            'أتقن ٢٥٠ سؤالًا',                  lambda s: s['mastered'] >= 250),
-    ('acc90',    '🎯', 'دقة عالية',       'حقّق دقة ٩٠٪ بعد ٥٠ إجابة',        lambda s: s['answered'] >= 50 and s['accuracy'] >= 90),
+    ('acc90',    '🎯', 'دقة عالية',       'حقّق دقة ٩٠٪ بعد ٥٠ إجابةً',        lambda s: s['answered'] >= 50 and s['accuracy'] >= 90),
     ('perfect',  '🏆', 'درجة كاملة',      'أنهِ اختبارًا بعلامة كاملة',        lambda s: s['perfect']),
     ('clean',    '🧹', 'صفر أخطاء',       'صفّر قائمة أخطائك بعد أن امتلأت',  lambda s: s['answered'] >= 30 and s['wrong'] == 0),
     ('allLaws',  '🗂️', 'شامل',            'أجب عن سؤال من كل مادة',           lambda s: s['laws_touched'] >= s['laws']),

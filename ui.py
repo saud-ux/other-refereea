@@ -396,6 +396,29 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;"
 const AR="٠١٢٣٤٥٦٧٨٩";
 const num=n=>String(n==null?"":n).replace(/[0-9]/g,d=>AR[+d]);
 const pct=n=>num(Math.round(n||0))+"٪";
+/* تمييز العدد في العربية يتبع آخر رقمين: مفرد، مثنى، جمع قلّة، ثم مفرد منصوب.
+   الترتيب في كل قائمة: واحد، ثم اثنان، ثم من ٣ إلى ١٠، ثم من ١١ إلى ٩٩، ثم مضاعفات المئة */
+const NOUN={
+  day:["يوم واحد","يومان","أيام","يومًا","يوم"],
+  streak:["يوم متتالٍ","يومان متتاليان","أيام متتالية","يومًا متتاليًا","يوم متتالٍ"],
+  q:["سؤال واحد","سؤالان","أسئلة","سؤالًا","سؤال"],
+  due:["سؤال مستحق اليوم","سؤالان مستحقان اليوم","أسئلة مستحقة اليوم","سؤالًا مستحقًا اليوم","سؤال مستحق اليوم"],
+  mastered:["سؤال متقن","سؤالان متقنان","أسئلة متقنة","سؤالًا متقنًا","سؤال متقن"],
+  answer:["إجابة واحدة","إجابتان","إجابات","إجابةً","إجابة"],
+  test:["اختبار واحد","اختباران","اختبارات","اختبارًا","اختبار"],
+  law:["مادة واحدة","مادتان","مواد","مادةً","مادة"],
+  min:["دقيقة واحدة","دقيقتان","دقائق","دقيقةً","دقيقة"],
+};
+function unit(n,k){
+  const f=NOUN[k], r=n%100;
+  if(n===1) return f[0];
+  if(n===2) return f[1];
+  if(r>=3&&r<=10) return f[2];
+  if(r>=11&&r<=99) return f[3];
+  return f[4];
+}
+// المفرد والمثنى يحملان العدد في لفظهما، فلا يسبقهما رقم
+const qty=(n,k)=>(n===1||n===2)?unit(n,k):num(n)+" "+unit(n,k);
 function toast(msg,kind){
   const t=el(`<div class="toast ${kind||""}">${esc(msg)}</div>`);
   $("#toasts").appendChild(t);
@@ -484,6 +507,7 @@ const R={
   },
   render(){
     this.paintNav();
+    if(S.me) setSideMeta(S.me.stats);   // وإلا بقي الشريط الجانبي على أرقام قديمة
     const v=VIEWS[S.view]||VIEWS.home;
     $("#view").innerHTML="";
     $("#view").appendChild(el(topBar()));
@@ -500,8 +524,8 @@ function topBar(){
   const titles={home:`${greet()} يا ${esc(m.user.name)} 👋`,study:"المذاكرة",test:"اختبر نفسك",
     mistakes:"أخطائي",stats:"إحصائياتي",board:"لوحة الترتيب",account:"الحساب"};
   const subs={
-    home: st.due?`عندك ${num(st.due)} سؤالًا مستحقًا للمراجعة اليوم`:"ابدأ بسؤال اليوم ثم اختبر نفسك",
-    study:`${num(st.total_questions)} سؤالًا في ${num(st.laws)} مادة`,
+    home: st.due?`عندك ${qty(st.due,"due")}`:"ابدأ بسؤال اليوم ثم اختبر نفسك",
+    study:`${qty(st.total_questions,"q")} في ${qty(st.laws,"law")}`,
     test:"اختر المادة وعدد الأسئلة وشغّل المؤقت أو أوقفه",
     mistakes:"الأسئلة التي أخطأت فيها ترجع لك بنظام مراجعة متباعدة حتى تتقنها",
     stats:"ملخّص أدائك منذ بداية الاشتراك",
@@ -510,7 +534,7 @@ function topBar(){
   return `<div class="top">
     <div class="hello"><b>${titles[S.view]||""}</b><span>${esc(subs[S.view]||"")}</span></div>
     <div class="topacts">
-      ${st.streak?`<div class="pill fire">🔥 ${num(st.streak)} ${st.streak===1?"يوم":"أيام"}</div>`:""}
+      ${st.streak?`<div class="pill fire">🔥 ${qty(st.streak,"day")}</div>`:""}
       ${themeBtn()}
     </div></div>`;
 }
@@ -563,7 +587,7 @@ async function boot(){
 }
 function setSideMeta(st){
   const m=$("#sideMeta"); if(!m||!st) return;
-  m.innerHTML=`<span>${num(st.mastered)} متقن</span><span>${pct(st.accuracy)} دقة</span>`;
+  m.innerHTML=`<span>${st.mastered?qty(st.mastered,"mastered"):"لم تبدأ بعد"}</span>${st.answered?`<span>${pct(st.accuracy)} دقة</span>`:""}`;
 }
 async function refreshMe(){ try{ S.me=await api("/api/me"); }catch(e){} }
 async function logout(){
@@ -594,11 +618,11 @@ function tilesHTML(){
   const st=S.me.stats;
   return `<div class="tiles">
     <div class="tile accent"><div class="k">${ic("check")} تم إتقانه</div>
-      <div class="v">${num(st.mastered)}</div><div class="d">من ${num(st.total_questions)} سؤالًا</div></div>
+      <div class="v">${num(st.mastered)}</div><div class="d">من ${qty(st.total_questions,"q")}</div></div>
     <div class="tile hot"><div class="k">${ic("flag")} يحتاج مراجعة</div>
-      <div class="v">${num(st.wrong)}</div><div class="d">${st.due?num(st.due)+" مستحق اليوم":"لا شيء مستحق اليوم"}</div></div>
+      <div class="v">${num(st.wrong)}</div><div class="d">${st.due?qty(st.due,"due"):"لا شيء مستحق اليوم"}</div></div>
     <div class="tile"><div class="k">${ic("chart")} دقة الإجابات</div>
-      <div class="v">${pct(st.accuracy)}</div><div class="d">${num(st.answered)} إجابة</div></div>
+      <div class="v">${pct(st.accuracy)}</div><div class="d">${st.answered?qty(st.answered,"answer"):"لم تجب بعد"}</div></div>
     <div class="tile"><div class="k">${ic("timer")} اختبارات</div>
       <div class="v">${num(st.tests)}</div><div class="d">${st.best_score!=null?"أفضل نتيجة "+num(st.best_score)+" من "+num(st.best_total):"لم تبدأ بعد"}</div></div>
   </div>`;
@@ -618,7 +642,7 @@ VIEWS.home=function(){
       <div class="card">
         <h3>ابدأ اختبارًا</h3><p class="sub">اختر عدد الأسئلة ثم انطلق، أو خصّص المادة والمؤقت من صفحة الاختبار.</p>
         <div class="chiprow" style="margin-bottom:12px">
-          ${[5,10,20,30].map(n=>`<button class="chip ${S.cfg.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${num(n)} أسئلة</button>`).join("")}
+          ${[5,10,20,30].map(n=>`<button class="chip ${S.cfg.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${qty(n,"q")}</button>`).join("")}
         </div>
         <button class="btn primary block" onclick="Test.start()">${ic("play")} ابدأ الآن</button>
         <div class="btnrow" style="margin-top:9px">
@@ -715,7 +739,7 @@ const Study={
     try{
       const d=await api(`/api/study?scope=${encodeURIComponent(sc.scope)}&filter=${sc.filter}&search=${encodeURIComponent(sc.search)}`);
       sc.items=d.items;
-      const cEl=$("#stCount"); if(cEl) cEl.textContent=`${num(d.total)} سؤالًا`;
+      const cEl=$("#stCount"); if(cEl) cEl.textContent=qty(d.total,"q");
       if(!d.items.length){ box.innerHTML=`<div class="empty"><span class="big">🔍</span>لا توجد أسئلة مطابقة.</div>`; return; }
       box.innerHTML=d.items.map(q=>qItemHTML(q)).join("");
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
@@ -775,7 +799,7 @@ VIEWS.test=function(){
       <div class="hint">«ذكي» يقدّم ما لم تحلّه وما أخطأت فيه وما حان موعد مراجعته.</div></div>
     <div class="field"><label>المؤقت</label>
       <div class="chiprow">
-        <button class="chip ${c.timer?"on":""}" onclick="S.cfg.timer=true;R.render()">مؤقت (${num(S.me.user.test_minutes)} دقيقة)</button>
+        <button class="chip ${c.timer?"on":""}" onclick="S.cfg.timer=true;R.render()">مؤقت (${qty(S.me.user.test_minutes,"min")})</button>
         <button class="chip ${!c.timer?"on":""}" onclick="S.cfg.timer=false;R.render()">بدون مؤقت</button>
       </div></div>
     <button class="btn primary block" onclick="Test.start()">${ic("play")} ابدأ الاختبار</button>
@@ -952,10 +976,10 @@ VIEWS.stats=function(){
       const d=await api("/api/stats"); S.stats=d;
       const o=d.overall;
       box.innerHTML=`<div class="tiles">
-        <div class="tile accent"><div class="k">${ic("chart")} الدقة الكلّية</div><div class="v">${pct(o.accuracy)}</div><div class="d">${num(o.answered)} إجابة</div></div>
-        <div class="tile"><div class="k">${ic("check")} تم إتقانه</div><div class="v">${num(o.mastered)}</div><div class="d">من ${num(o.total_questions)} سؤالًا</div></div>
-        <div class="tile hot"><div class="k">🔥 أطول سلسلة</div><div class="v">${num(o.best_streak)}</div><div class="d">يومًا متتاليًا</div></div>
-        <div class="tile"><div class="k">${ic("timer")} متوسط الاختبار</div><div class="v">${o.avg_test!=null?pct(o.avg_test):"لا يوجد"}</div><div class="d">${num(o.tests)} اختبارًا</div></div>
+        <div class="tile accent"><div class="k">${ic("chart")} الدقة الكلّية</div><div class="v">${pct(o.accuracy)}</div><div class="d">${o.answered?qty(o.answered,"answer"):"لم تجب بعد"}</div></div>
+        <div class="tile"><div class="k">${ic("check")} تم إتقانه</div><div class="v">${num(o.mastered)}</div><div class="d">من ${qty(o.total_questions,"q")}</div></div>
+        <div class="tile hot"><div class="k">🔥 أطول سلسلة</div><div class="v">${num(o.best_streak)}</div><div class="d">${unit(o.best_streak,"streak")}</div></div>
+        <div class="tile"><div class="k">${ic("timer")} متوسط الاختبار</div><div class="v">${o.avg_test!=null?pct(o.avg_test):"لا يوجد"}</div><div class="d">${o.tests?qty(o.tests,"test"):"لم تبدأ بعد"}</div></div>
       </div>
       <div class="cols">
         <div class="stack">
@@ -992,10 +1016,10 @@ VIEWS.board=function(){
         ${d.items.length?d.items.map((x,i)=>`<div class="lead ${x.me?"me":""}">
           <span class="rank ${medal(i)}">${num(i+1)}</span>
           <b>${esc(x.name)}</b>${x.me?`<span class="you">أنت</span>`:""}
-          <span>${num(x.mastered)} متقن</span><span>${pct(x.accuracy)}</span></div>`).join(""):`<div class="empty">لا توجد نتائج بعد.</div>`}
+          <span>${qty(x.mastered,"mastered")}</span><span>${pct(x.accuracy)}</span></div>`).join(""):`<div class="empty">لا توجد نتائج بعد.</div>`}
         ${d.me&&!d.me.listed?`<div class="lead me"><span class="rank">${d.me.rank?num(d.me.rank):"؟"}</span>
           <b>${esc(d.me.name)}</b><span class="you">أنت</span>
-          <span>${num(d.me.mastered)} متقن</span></div>`:""}
+          <span>${qty(d.me.mastered,"mastered")}</span></div>`:""}
       </div>
       <div class="card"><h3>كيف يُحتسب الترتيب؟</h3>
         <p class="sub" style="margin:0">يُحتسب السؤال «متقنًا» عندما تجيب عنه إجابة صحيحة ثلاث مرات متتالية بعد أن أخطأت فيه، أو عندما تجيب عنه صحيحًا من أول مرة.
