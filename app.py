@@ -77,7 +77,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(40), unique=True, nullable=False, index=True)
     pin_hash = db.Column(db.String(255), nullable=False)
-    display_name = db.Column(db.String(60))
+    display_name = db.Column(db.String(60))   # لم يعد يُستعمل، يبقى لبيانات قديمة
     test_minutes = db.Column(db.Integer, default=10)
     streak = db.Column(db.Integer, default=0)
     best_streak = db.Column(db.Integer, default=0)
@@ -87,12 +87,13 @@ class User(db.Model):
     # الإشعار اليومي
     notify_on = db.Column(db.Boolean, default=False)
     notify_hour = db.Column(db.Integer, default=20)     # بتوقيت المستخدم المحلي
+    notify_minute = db.Column(db.Integer, default=0)
     tz_offset = db.Column(db.Integer, default=180)      # دقائق إزاحة عن UTC
     notified_on = db.Column(db.Date, nullable=True)     # يمنع تكرار إشعار اليوم
 
     @property
     def name(self):
-        return self.display_name or self.username
+        return self.username
 
 
 class Progress(db.Model):
@@ -163,6 +164,7 @@ NEW_COLUMNS = {
 }
 NEW_COLUMNS['user'].update({
     'notify_on': 'BOOLEAN DEFAULT FALSE', 'notify_hour': 'INTEGER DEFAULT 20',
+    'notify_minute': 'INTEGER DEFAULT 0',
     'tz_offset': 'INTEGER DEFAULT 180', 'notified_on': 'DATE',
 })
 
@@ -579,9 +581,8 @@ def register():
         return jsonify(error='كلمة المرور من 4 إلى 8 أرقام.'), 400
     if User.query.filter_by(username=username).first():
         return jsonify(error='اسم المستخدم مستخدم بالفعل.'), 409
-    # الاسم الظاهر يبدأ فارغًا، فيُعرض اسم المستخدم حتى يغيّره صاحبه من صفحة الحساب
     u = User(username=username, pin_hash=generate_password_hash(pin),
-             display_name=None, public=True, streak=0, best_streak=0)
+             public=True, streak=0, best_streak=0)
     db.session.add(u)
     db.session.commit()
     session.permanent = True
@@ -624,9 +625,11 @@ def me():
     touch_streak(u)
     return jsonify(
         auth=True,
-        user={'username': u.username, 'display_name': u.display_name or '', 'name': u.name,
+        user={'username': u.username, 'name': u.name,
               'test_minutes': u.test_minutes or 10,
-              'notify_on': bool(u.notify_on), 'notify_hour': u.notify_hour if u.notify_hour is not None else 20},
+              'notify_on': bool(u.notify_on),
+              'notify_hour': u.notify_hour if u.notify_hour is not None else 20,
+              'notify_minute': u.notify_minute or 0},
         stats=user_stats(u),
         scopes=[QB.ALL_SCOPE] + QB.CATEGORIES,
         all_scope=QB.ALL_SCOPE,
@@ -647,17 +650,16 @@ def settings():
         if not 1 <= m <= 60:
             return jsonify(error='مدة الاختبار من 1 إلى 60 دقيقة.'), 400
         u.test_minutes = m
-    if 'display_name' in d:
-        u.display_name = ((d.get('display_name') or '').strip()[:60]) or None
-    if 'notify_hour' in d:
+    if 'notify_hour' in d or 'notify_minute' in d:
         try:
-            h = int(d['notify_hour'])
+            h = int(d.get('notify_hour', u.notify_hour or 0))
+            m = int(d.get('notify_minute', u.notify_minute or 0))
         except (TypeError, ValueError):
-            return jsonify(error='ساعة غير صحيحة.'), 400
-        if not 0 <= h <= 23:
-            return jsonify(error='الساعة من 0 إلى 23.'), 400
-        if h != u.notify_hour:
-            u.notify_hour = h
+            return jsonify(error='وقت غير صحيح.'), 400
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            return jsonify(error='الوقت من 00:00 إلى 23:59.'), 400
+        if (h, m) != (u.notify_hour, u.notify_minute):
+            u.notify_hour, u.notify_minute = h, m
             u.notified_on = None       # الوقت الجديد يسري من اليوم نفسه
     if 'tz_offset' in d:
         remember_tz(u, d['tz_offset'])
@@ -706,7 +708,7 @@ def export():
     pmap = progress_map(u)
     data = {
         'exported_at': datetime.utcnow().isoformat() + 'Z',
-        'user': {'username': u.username, 'display_name': u.display_name,
+        'user': {'username': u.username,
                  'streak': u.streak, 'best_streak': u.best_streak},
         'stats': user_stats(u, pmap),
         'progress': [{'qid': p.qid, 'question': QB.QMAP[p.qid]['q'] if p.qid in QB.QMAP else None,
@@ -1003,19 +1005,19 @@ def leaderboard():
     if err:
         return err
     mastered = db.func.sum(db.case((Progress.mastered == True, 1), else_=0))  # noqa: E712
-    rows = (db.session.query(User.id, User.username, User.display_name,
+    rows = (db.session.query(User.id, User.username,
                              mastered.label('m'),
                              db.func.sum(Progress.seen_count).label('seen'),
                              db.func.sum(Progress.correct_count).label('ok'))
             .join(Progress, Progress.user_id == User.id)
             # لا استثناء: كل من أجاب عن سؤال يظهر في اللوحة
-            .group_by(User.id, User.username, User.display_name)
+            .group_by(User.id, User.username)
             .order_by(db.text('m DESC'))
             .limit(25).all())
     items, my_row = [], None
     for r in rows:
         seen, ok, m = int(r.seen or 0), int(r.ok or 0), int(r.m or 0)
-        entry = {'name': r.display_name or r.username, 'mastered': m,
+        entry = {'name': r.username, 'mastered': m,
                  'accuracy': round(ok / seen * 100, 1) if seen else 0.0,
                  'me': r.id == u.id}
         if entry['me']:
@@ -1033,6 +1035,9 @@ def leaderboard():
 # الموضوع الذي تراه خدمة الدفع. عنوان الموقع مقبول حسب RFC 8292، ولا يكشف
 # بريد أحد لخوادم غوغل وآبل.
 VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', '') or 'https://other-refereea.onrender.com'
+# المجدول ينادي كل ربع ساعة، فقد يتأخّر الإشعار دقائق. وبعد ساعتين يسقط
+# بدل أن يصل في وقت لا يناسب صاحبه.
+LATE_LIMIT = 120
 CRON_SECRET = os.environ.get('CRON_SECRET', '').strip()
 _vapid = {}
 
@@ -1128,15 +1133,15 @@ def push_subscribe():
     if u.notified_on == date.today():
         u.notified_on = None      # جهاز جديد اليوم يستحقّ إشعار اليوم
     remember_tz(u, d.get('tz_offset'))
-    if 'hour' in d:
-        try:
-            hr = int(d['hour'])
-            if 0 <= hr <= 23:
-                u.notify_hour = hr
-        except (TypeError, ValueError):
-            pass
+    try:
+        if 'hour' in d and 0 <= int(d['hour']) <= 23:
+            u.notify_hour = int(d['hour'])
+        if 'minute' in d and 0 <= int(d['minute']) <= 59:
+            u.notify_minute = int(d['minute'])
+    except (TypeError, ValueError):
+        pass
     db.session.commit()
-    return jsonify(ok=True, hour=u.notify_hour)
+    return jsonify(ok=True, hour=u.notify_hour, minute=u.notify_minute or 0)
 
 
 @app.post('/api/push/unsubscribe')
@@ -1187,7 +1192,14 @@ def push_dispatch():
              .filter(db.or_(User.notified_on == None, User.notified_on != today))  # noqa: E711
              .all())
     for u in users:
-        if local_now(u).hour != (u.notify_hour if u.notify_hour is not None else 20):
+        now = local_now(u)
+        target = (u.notify_hour if u.notify_hour is not None else 20) * 60 + (u.notify_minute or 0)
+        late = now.hour * 60 + now.minute - target
+        if late < 0:                         # لم يحن وقته بعد
+            continue
+        if late > LATE_LIMIT:                # فات وقته بكثير، فلا يُزعج في غير أوانه
+            u.notified_on = today
+            skipped += 1
             continue
         act = Activity.query.filter_by(user_id=u.id, day=today).first()
         if act and act.answers:              # حلّ شيئًا اليوم، فلا داعي للتذكير

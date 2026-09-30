@@ -1053,9 +1053,8 @@ VIEWS.board=function(){
 VIEWS.account=function(){
   const u=S.me.user;
   mount(`<div class="cols"><div class="stack">
-    <div class="card"><h3>الملف الشخصي</h3><p class="sub">اسمك يظهر في لوحة الترتيب. اتركه فارغًا ليظهر اسم المستخدم.</p>
+    <div class="card"><h3>الملف الشخصي</h3><p class="sub">اسم المستخدم هو ما يظهر في لوحة الترتيب.</p>
       <div class="field"><label>اسم المستخدم</label><input value="${esc(u.username)}" disabled></div>
-      <div class="field"><label for="acName">الاسم في اللوحة</label><input id="acName" maxlength="40" value="${esc(u.display_name||"")}" placeholder="${esc(u.username)}"></div>
       <div class="field"><label for="acMin">مدة الاختبار بالدقائق</label><input id="acMin" type="number" min="1" max="60" value="${u.test_minutes}"></div>
       <button class="btn primary block" onclick="Acc.save()">حفظ التغييرات</button></div>
 
@@ -1090,23 +1089,19 @@ VIEWS.account=function(){
       <button class="btn danger block" onclick="Acc.del()">حذف الحساب نهائيًا</button></div>
   </div></div>`);
 };
-function hourLabel(h){
-  const n=h%12===0?12:h%12;
-  const part=h===12?" ظهرًا":h<12?" صباحًا":h<18?" عصرًا":" مساءً";
-  return num(n)+part;
-}
+// hh:mm بأرقام لاتينية كما يتطلّب حقل الوقت في المتصفّح
+const hhmm=(h,m)=>String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
 function notifyBody(){
   if(!Push.ready) return `<div class="empty" style="padding:18px">جارٍ التحقّق…</div>`;
   const st=Push.state;
   if(st==="needs-install") return `<p class="hint">${ic("home")} على الآيفون تصل الإشعارات فقط بعد إضافة الموقع إلى الشاشة الرئيسية. افتح قائمة المشاركة ثم «إضافة إلى الشاشة الرئيسية»، وافتح الموقع من الأيقونة الجديدة وعُد إلى هنا.</p>`;
   if(st==="unsupported") return `<p class="hint">${ic("close")} هذا المتصفّح لا يدعم الإشعارات. جرّب كروم على أندرويد أو سفاري على آيفون بعد إضافة الموقع إلى الشاشة الرئيسية.</p>`;
   if(st==="blocked") return `<p class="hint">${ic("close")} الإشعارات محظورة لهذا الموقع في إعدادات المتصفّح. اسمح بها من إعدادات الموقع ثم عُد إلى هنا.</p>`;
-  const hours=[6,7,8,9,12,15,17,18,19,20,21,22];
-  const h=S.me.user.notify_hour;
   if(st==="off") return `<button class="btn primary block" onclick="Acc.notifyOn()">${ic("bell")} فعّل الإشعار اليومي</button>`;
-  return `<div class="field"><label>وقت التذكير</label>
-      <div class="chiprow">${hours.map(x=>
-        `<button class="chip ${h===x?"on":""}" onclick="Acc.hour(${x})">${hourLabel(x)}</button>`).join("")}</div></div>
+  const u=S.me.user;
+  return `<div class="field"><label for="acTime">وقت التذكير</label>
+      <input id="acTime" type="time" dir="ltr" lang="en"
+        value="${hhmm(u.notify_hour,u.notify_minute||0)}" onchange="Acc.time(this.value)"></div>
     <div class="btnrow">
       <button class="btn soft" onclick="Acc.notifyTest()">إرسال تجربة</button>
       <button class="btn ghost" onclick="Acc.notifyOff()">إيقاف الإشعار</button></div>`;
@@ -1125,17 +1120,19 @@ const Acc={
     try{ await api("/api/push/test",{body:{}}); toast("أُرسلت التجربة، تابع إشعارات جهازك","ok"); }
     catch(e){ toast(e.error||"تعذّر إرسال التجربة","bad"); }
   },
-  async hour(h){
-    const old=S.me.user.notify_hour; S.me.user.notify_hour=h; R.render();
-    try{ await api("/api/settings",{body:{notify_hour:h,tz_offset:tzOffset()}});
-      toast("وقت التذكير "+hourLabel(h),"ok"); }
-    catch(e){ S.me.user.notify_hour=old; R.render(); toast(e.error||"تعذّر الحفظ","bad"); }
+  async time(v){
+    const [h,m]=String(v||"").split(":").map(Number);
+    if(!(h>=0&&h<=23&&m>=0&&m<=59)) return toast("وقت غير صحيح","bad");
+    const u=S.me.user, old=[u.notify_hour,u.notify_minute];
+    u.notify_hour=h; u.notify_minute=m;
+    try{ await api("/api/settings",{body:{notify_hour:h,notify_minute:m,tz_offset:tzOffset()}});
+      toast("وقت التذكير "+hhmm(h,m),"ok"); }
+    catch(e){ [u.notify_hour,u.notify_minute]=old; R.render(); toast(e.error||"تعذّر الحفظ","bad"); }
   },
   theme(t){ try{localStorage.setItem("theme",t);}catch(e){} Theme.apply(); R.render(); },
   async save(){
-    const body={display_name:$("#acName").value.trim(),test_minutes:+$("#acMin").value};
+    const body={test_minutes:+$("#acMin").value};
     try{ await api("/api/settings",{body}); await refreshMe(); R.render();
-      $("#sideName").textContent=S.me.user.name; $("#avatar").textContent=S.me.user.name.slice(0,2);
       toast("تم حفظ التغييرات","ok"); }
     catch(e){ toast(e.error||"تعذّر الحفظ","bad"); }
   },
@@ -1187,7 +1184,8 @@ const Push={
     const j=this.sub.toJSON();
     await api("/api/push/subscribe",{body:{
       endpoint:j.endpoint, keys:j.keys, tz_offset:tzOffset(),
-      hour:S.me?S.me.user.notify_hour:20}});
+      hour:S.me?S.me.user.notify_hour:20,
+      minute:S.me?(S.me.user.notify_minute||0):0}});
     if(S.me) S.me.user.notify_on=true;
   },
   async enable(){
