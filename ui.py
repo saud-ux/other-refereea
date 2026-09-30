@@ -9,7 +9,8 @@ CSS = r'''
 html{-webkit-text-size-adjust:100%}
 body{margin:0;min-height:100dvh;background:var(--bg-grad);color:var(--text);
   font-family:"IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
-  font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  touch-action:manipulation}
 button,input,select,textarea{font:inherit;color:inherit}
 h1,h2,h3,h4{margin:0;line-height:1.4;font-weight:700}
 p{margin:0}
@@ -64,8 +65,9 @@ a{color:inherit}
 /* ══════════════ الحقول ══════════════ */
 .field{margin-bottom:14px}
 .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:6px}
-input,select{width:100%;padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--line);
-  background:var(--surface-2);color:var(--text);font-size:15px;outline:none;transition:.15s}
+/* ١٦ بكسل بالضبط: أقل منها يجعل آيفون يكبّر الصفحة بمجرّد لمس الحقل */
+input,select,textarea{width:100%;padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:var(--surface-2);color:var(--text);font-size:16px;outline:none;transition:.15s}
 input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring);background:var(--surface)}
 input[type=number]{-moz-appearance:textfield}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
@@ -323,7 +325,7 @@ HTML = r'''<!doctype html>
 <html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#071410">
 <meta name="description" content="منصّة تدريب الحكّام على قوانين كرة القدم: مذاكرة واختبارات ومراجعة ذكية للأخطاء.">
 <title>قوانين اللعبة</title>
@@ -1230,6 +1232,9 @@ function urlB64(s){
   const raw=atob((s+pad).replace(/-/g,"+").replace(/_/g,"/"));
   return Uint8Array.from(raw,c=>c.charCodeAt(0));
 }
+/* سفاري على آيفون يتجاهل user-scalable، فيُمنع القرص بإيماءاته الخاصة */
+["gesturestart","gesturechange","gestureend"].forEach(t=>
+  addEventListener(t,e=>e.preventDefault(),{passive:false}));
 if("serviceWorker" in navigator){
   addEventListener("load",()=>navigator.serviceWorker.register("/sw.js")
     .then(()=>Push.init()).catch(()=>{}));
