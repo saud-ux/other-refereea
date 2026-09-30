@@ -20,7 +20,8 @@ a{color:inherit}
 /* ══════════════ الألوان ══════════════ */
 :root{
   --brand:#16a34a; --brand-2:#a3e635; --hot:#f97316; --info:#0ea5e9;
-  --r:18px; --r-sm:12px; --r-lg:24px;
+  /* سلّم الاستدارات: دقيق، صغير، متوسط، بطاقة، كبير */
+  --r-xs:8px; --r-sm:12px; --r-md:14px; --r:18px; --r-lg:24px;
   --bg:#f1f6f2;
   --bg-grad:radial-gradient(1100px 500px at 85% -14%, #dcf5e2 0%, transparent 62%), #f1f6f2;
   --surface:#fff; --surface-2:#f4f9f5; --surface-3:#eaf2ec;
@@ -55,7 +56,7 @@ a{color:inherit}
 .authcard .sub{color:var(--muted);text-align:center;font-size:13.5px;margin:6px 0 22px}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface-2);
   border:1px solid var(--line);border-radius:var(--r-sm);padding:4px;margin-bottom:18px}
-.seg button{border:0;background:transparent;border-radius:9px;padding:9px;font-weight:600;
+.seg button{border:0;background:transparent;border-radius:var(--r-xs);padding:9px;font-weight:600;
   font-size:14px;cursor:pointer;color:var(--muted)}
 .seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px #0002}
 :root[data-theme="dark"] .seg button.on{background:var(--surface-3);color:var(--brand-2)}
@@ -85,7 +86,7 @@ input[type=number]{-moz-appearance:textfield}
 .btn.ghost:hover:not(:disabled){color:var(--text);border-color:var(--brand)}
 .btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
 .btn.block{width:100%}
-.btn.sm{padding:8px 13px;font-size:13px;border-radius:10px}
+.btn.sm{padding:8px 13px;font-size:13px;border-radius:var(--r-sm)}
 .btnrow{display:flex;gap:9px;flex-wrap:wrap}
 
 /* ══════════════ الهيكل ══════════════ */
@@ -112,15 +113,17 @@ input[type=number]{-moz-appearance:textfield}
 .sidefoot{margin-top:auto;border-top:1px solid var(--line-soft);padding-top:14px}
 .userchip{display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--r-sm);
   background:var(--surface-2);width:100%;border:0;cursor:pointer;text-align:start}
-.avatar{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;
+.avatar{width:34px;height:34px;border-radius:var(--r-sm);flex:none;display:grid;place-items:center;
   background:linear-gradient(140deg,#34d399,#0ea5e9);color:#04231a;font-weight:700;font-size:13px}
 .userchip b{font-size:13.5px;display:block}
 .userchip small{display:flex;flex-wrap:wrap;gap:2px 10px;color:var(--muted);font-size:11px}
 .content{min-width:0;display:flex;flex-direction:column}
 main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
+/* تباعد واحد بين كل عنصرين في الصفحة، فلا تتفاوت الفراغات بحسب العنصر */
+#view > * + *{margin-top:15px}
 
 /* ══════════════ الشريط العلوي ══════════════ */
-.top{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 0 18px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 0 0}
 .hello b{font-size:21px;display:block}
 .hello span{color:var(--muted);font-size:13.5px}
 .topacts{display:flex;align-items:center;gap:9px;flex:none}
@@ -151,9 +154,10 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .tile.accent .v{color:var(--brand)}
 :root[data-theme="dark"] .tile.accent .v{color:var(--brand-2)}
 .tile.hot .v{color:var(--hot)}
-.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:15px;margin-top:15px;align-items:start}
+.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:15px;align-items:start}
 .stack{display:flex;flex-direction:column;gap:15px}
-.sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 12px}
+/* عنوان القسم يستحقّ فراغًا أوسع فوقه، ويكفيه الفراغ الموحّد تحته */
+.sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 0}
 .sechead h2{font-size:18px}
 
 /* ══════════════ السؤال ══════════════ */
@@ -165,19 +169,19 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .badgerow .badge{margin-bottom:11px}
 .qtext{font-size:17.5px;font-weight:600;line-height:1.85;margin:0 0 15px}
 .opts{display:grid;gap:9px}
-.opt{display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:13px;width:100%;
+.opt{display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:var(--r-md);width:100%;
   border:1px solid var(--line);background:var(--surface-2);font-size:14.5px;font-weight:500;
   cursor:pointer;text-align:start;color:var(--text);transition:.12s}
 .opt:hover:not(:disabled){border-color:var(--brand)}
 .opt:disabled{cursor:default}
-.opt .key{width:25px;height:25px;border-radius:8px;flex:none;display:grid;place-items:center;
+.opt .key{width:25px;height:25px;border-radius:var(--r-xs);flex:none;display:grid;place-items:center;
   background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:700}
 .opt.right{border-color:var(--ok);background:var(--ok-bg)}
 .opt.right .key{background:var(--ok);color:#fff;border-color:var(--ok)}
 .opt.wrong{border-color:var(--bad);background:var(--bad-bg)}
 .opt.wrong .key{background:var(--bad);color:#fff;border-color:var(--bad)}
 .opt.picked{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
-.explain{margin-top:13px;padding:13px 15px;border-radius:13px;background:var(--surface-2);
+.explain{margin-top:13px;padding:13px 15px;border-radius:var(--r-md);background:var(--surface-2);
   border:1px solid var(--line-soft);font-size:13.5px;line-height:1.85}
 .explain b{color:var(--ok)}
 .explain b.no{color:var(--bad)}
@@ -195,30 +199,30 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .meter .lab{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:6px}
 .meter .lab b{font-weight:600}
 .meter .lab span{color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
-.bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
-.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .5s}
+.bar{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .5s}
 .lead{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
 .lead:last-child{border-bottom:0}
-.rank{width:26px;height:26px;border-radius:9px;flex:none;display:grid;place-items:center;
+.rank{width:26px;height:26px;border-radius:var(--r-xs);flex:none;display:grid;place-items:center;
   background:var(--surface-2);font-size:12px;font-weight:700;color:var(--muted)}
 .rank.g{background:linear-gradient(140deg,#fde047,#f59e0b);color:#3b2600}
 .rank.s{background:linear-gradient(140deg,#e5e7eb,#9ca3af);color:#1f2937}
 .rank.b{background:linear-gradient(140deg,#fdba74,#c2762c);color:#3b2600}
 .lead b{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lead span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
-.lead.me{background:var(--surface-2);border-radius:11px;padding:10px;border-bottom:0;margin-top:6px}
+.lead.me{background:var(--surface-2);border-radius:var(--r-md);padding:10px;border-bottom:0;margin-top:6px}
 .lead .you{flex:none;padding:2px 8px;border-radius:999px;background:var(--brand);color:#fff;
   font-size:10.5px;font-weight:700}
 :root[data-theme="dark"] .lead .you{background:var(--brand-2);color:#06210f}
 .heat{display:grid;grid-template-columns:repeat(14,1fr);gap:4px}
-.heat i{aspect-ratio:1;border-radius:4px;background:var(--surface-2);border:1px solid var(--line-soft)}
+.heat i{aspect-ratio:1;border-radius:5px;background:var(--surface-2);border:1px solid var(--line-soft)}
 .heat i.l1{background:#16a34a40;border-color:transparent}
 .heat i.l2{background:#16a34a80;border-color:transparent}
 .heat i.l3{background:var(--brand);border-color:transparent}
 /* السهم وأثر الضغط هما ما يقول للمستخدم إن الشريط يفتح صفحة، فالجوال بلا تحويم */
 .strip{display:grid;grid-template-columns:repeat(3,1fr) auto;width:100%;cursor:pointer;
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  overflow:hidden;margin-bottom:14px;padding:0;text-align:center;box-shadow:var(--shadow);
+  overflow:hidden;padding:0;text-align:center;box-shadow:var(--shadow);
   transition:border-color .12s, transform .08s}
 .strip span{display:block;padding:13px 6px;transition:background .12s}
 /* فاصل بين الأرقام وحدها، فلا يبدو السهم خانة رابعة فارغة */
@@ -240,19 +244,19 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .timer{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--brand)}
 :root[data-theme="dark"] .timer{color:var(--brand-2)}
 .timer.warn{color:var(--hot)}
-.prog{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
-.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));border-radius:99px;transition:width .3s}
+.prog{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));border-radius:999px;transition:width .3s}
 .score{font-size:52px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
 .divider{height:1px;background:var(--line-soft);margin:16px 0}
 .ach{display:flex;align-items:center;gap:11px;padding:10px 0;font-size:13.5px}
-.ach .ico{width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;
+.ach .ico{width:36px;height:36px;border-radius:var(--r-sm);flex:none;display:grid;place-items:center;
   background:var(--surface-2);font-size:17px;filter:grayscale(1);opacity:.45}
 .ach.got .ico{filter:none;opacity:1;background:var(--ok-bg)}
 .ach b{display:block;font-weight:600}
 .ach small{color:var(--muted);font-size:11.5px}
 
 /* ══════════════ قائمة المذاكرة ══════════════ */
-.qitem{border:1px solid var(--line);border-radius:14px;background:var(--surface);margin-bottom:10px;overflow:hidden}
+.qitem{border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);margin-bottom:10px;overflow:hidden}
 .qitem>button.head{display:flex;align-items:flex-start;gap:11px;width:100%;padding:14px;
   border:0;background:transparent;cursor:pointer;text-align:start;color:var(--text)}
 .qitem .qi-body{flex:1;min-width:0}
@@ -300,7 +304,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   main{padding:0 16px 24px}
   .tiles{grid-template-columns:repeat(2,1fr)}
   .cols{grid-template-columns:1fr}
-  .top{padding:16px 0 14px;align-items:flex-start;gap:10px}
+  .top{padding:16px 0 0;align-items:flex-start;gap:10px}
   .hello{min-width:0}
   .hello b{font-size:18px}
   /* أزرار أصغر قليلًا، فيبقى عنوان الترحيب في سطر واحد */
@@ -932,7 +936,7 @@ function renderResult(){
   </div>`);
   if(wrong.length){
     mount(`<div class="sechead"><h2>راجع أخطاءك (${num(wrong.length)})</h2></div>`);
-    wrong.forEach(x=>mount(`<div class="card" style="margin-bottom:10px">
+    wrong.forEach(x=>mount(`<div class="card">
       <div class="badge dim">${esc(x.category)}</div>
       <p class="qtext" style="font-size:15.5px">${esc(x.question)}</p>
       <div class="explain"><b class="no">إجابتك: ${esc(x.your)}</b>
@@ -955,7 +959,7 @@ document.addEventListener("keydown",e=>{
 JS += r'''
 /* ══════════════════ أخطائي ══════════════════ */
 VIEWS.mistakes=function(){
-  mount(`<div class="card" style="margin-bottom:15px">
+  mount(`<div class="card">
     <div class="btnrow">
       <button class="btn primary" style="flex:1" onclick="Test.mistakes()">${ic("play")} اختبرني بأخطائي</button>
       <button class="btn soft" onclick="Mist.load()">${ic("refresh")} تحديث</button>
