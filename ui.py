@@ -921,7 +921,6 @@ function renderTestRun(){
       <button class="btn primary" id="nextBtn" hidden onclick="Test.next()">
         ${S.tIdx===n-1?"إظهار النتيجة":"السؤال التالي"} ${ic("next")}</button>
     </div>
-    <div class="hint" style="margin-top:10px">اختصار: اضغط الأرقام من ${num(1)} إلى ${num(q.options.length)} للاختيار، و Enter للانتقال.</div>
   </div>`);
   tick();
 }
