@@ -130,6 +130,10 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .iconbtn{width:38px;height:38px;border-radius:var(--r-sm);border:1px solid var(--line);
   background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--text);flex:none}
 .iconbtn:hover{border-color:var(--brand)}
+/* زر الحساب: على الحاسب مدخله الشريط الجانبي، وعلى الجوال هذا الزر */
+.avabtn{display:none;font-size:12.5px;font-weight:700;letter-spacing:.2px;
+  background:linear-gradient(140deg,#34d399,#0ea5e9);color:#04231a;border-color:transparent}
+.avabtn.on{outline:2px solid var(--brand);outline-offset:1px}
 
 /* ══════════════ البطاقات والإحصاء ══════════════ */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
@@ -257,12 +261,13 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .modal .sub{color:var(--muted);font-size:13.5px;margin-bottom:18px}
 
 /* ══════════════ شريط الجوال ══════════════ */
-.tabbar{display:none;position:sticky;bottom:0;z-index:20;grid-template-columns:repeat(5,1fr);
+.tabbar{display:none;position:sticky;bottom:0;z-index:20;grid-auto-flow:column;grid-auto-columns:1fr;
   gap:2px;padding:8px 6px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
   background:color-mix(in srgb, var(--surface) 92%, transparent);backdrop-filter:blur(12px)}
 .tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);
   border:0;background:transparent;font-size:10.5px;font-weight:600;cursor:pointer;padding:4px 0;position:relative}
 .tabbar button .ic{width:21px;height:21px}
+.tabbar button span:not(.dot){font-size:10.5px;white-space:nowrap}
 .tabbar button.on{color:var(--brand)}
 :root[data-theme="dark"] .tabbar button.on{color:var(--brand-2)}
 .tabbar .dot{position:absolute;top:2px;inset-inline-end:26%;width:7px;height:7px;border-radius:50%;background:var(--hot)}
@@ -275,10 +280,16 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   main{padding:0 16px 24px}
   .tiles{grid-template-columns:repeat(2,1fr)}
   .cols{grid-template-columns:1fr}
-  .top{padding:16px 0 14px;align-items:flex-start}
+  .top{padding:16px 0 14px;align-items:flex-start;gap:10px}
+  .hello{min-width:0}
   .hello b{font-size:18px}
+  /* أزرار أصغر قليلًا، فيبقى عنوان الترحيب في سطر واحد */
+  .iconbtn{width:34px;height:34px}
+  .topacts{gap:7px}
+  .pill{padding:6px 10px;font-size:12px;gap:5px}
   .qtext{font-size:16px}
   .heat{grid-template-columns:repeat(10,1fr)}
+  .avabtn{display:grid}
 }
 @media(max-width:380px){ .tiles{grid-template-columns:1fr} }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -484,8 +495,8 @@ const PAGES=[
   {k:"test",  t:"اختبار",     i:"timer"},
   {k:"mistakes",t:"أخطائي",   i:"flag",  count:()=>S.me&&S.me.stats.wrong},
   {k:"stats", t:"إحصائياتي",  i:"chart"},
-  {k:"board", t:"الترتيب",    i:"trophy",desk:true},
-  {k:"account",t:"الحساب",    i:"user",  desk:true}
+  {k:"board", t:"الترتيب",    i:"trophy"},
+  {k:"account",t:"الحساب",    i:"user",  desk:true}   // مدخله على الجوال زر الصورة في الأعلى
 ];
 const R={
   async go(k){
@@ -522,7 +533,7 @@ function greet(){ const h=new Date().getHours();
   return h<5?"ليلة موفقة":h<12?"صباح الخير":h<17?"نهارك سعيد":"مساء الخير"; }
 function topBar(){
   const m=S.me, st=m.stats;
-  const titles={home:`${greet()} يا ${esc(m.user.name)} 👋`,study:"المذاكرة",test:"اختبر نفسك",
+  const titles={home:`${greet()} يا ${esc(m.user.name)}`,study:"المذاكرة",test:"اختبر نفسك",
     mistakes:"أخطائي",stats:"إحصائياتي",board:"لوحة الترتيب",account:"الحساب"};
   const subs={
     home: st.due?`عندك ${qty(st.due,"due")}`:"ابدأ بسؤال اليوم ثم اختبر نفسك",
@@ -537,6 +548,8 @@ function topBar(){
     <div class="topacts">
       ${st.streak?`<div class="pill fire">🔥 ${qty(st.streak,"day")}</div>`:""}
       ${themeBtn()}
+      <button class="iconbtn avabtn ${S.view==="account"?"on":""}" onclick="R.go('account')"
+        title="الحساب" aria-label="الحساب">${esc((m.user.name||m.user.username).slice(0,2))}</button>
     </div></div>`;
 }
 '''
