@@ -380,7 +380,8 @@ const IC={
  next:'<path d="M15 6l-6 6 6 6"/>',
  spark:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
  whistle:'<circle cx="8.5" cy="13.5" r="5.5"/><path d="M14 11h7l-1.5 3H14M8.5 13.5h0"/>',
- download:'<path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16"/>'
+ download:'<path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16"/>',
+ bell:'<path d="M18 8.5a6 6 0 1 0-12 0c0 5.2-2 6.5-2 6.5h16s-2-1.3-2-6.5z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/>'
 };
 const ic=(n,c)=>`<svg class="ic ${c||""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[n]||""}</svg>`;
 
@@ -554,6 +555,8 @@ async function boot(){
   $("#sideName").textContent=nm;
   setSideMeta(me.stats);
   R.render();
+  Push.init().then(()=>{ if(S.view==="account") R.render(); });
+  api("/api/settings",{body:{tz_offset:tzOffset()}}).catch(()=>{});
 }
 function setSideMeta(st){
   const m=$("#sideMeta"); if(!m||!st) return;
@@ -1031,6 +1034,10 @@ VIEWS.account=function(){
       <div class="chiprow">${[["auto","تلقائي"],["light","فاتح"],["dark","داكن"]].map(t=>
         `<button class="chip ${Theme.get()===t[0]?"on":""}" onclick="Acc.theme('${t[0]}')">${t[1]}</button>`).join("")}</div></div>
 
+    <div class="card"><h3>${ic("bell")} الإشعار اليومي</h3>
+      <p class="sub">تذكير واحد كل يوم في الوقت الذي تختاره، ولا يصلك إذا كنت قد حللت سؤال اليوم.</p>
+      ${notifyBody()}</div>
+
     <div class="card"><h3>بياناتك</h3><p class="sub">نسخة كاملة من تقدّمك بصيغة JSON.</p>
       <a class="btn soft block" href="/api/export" download>${ic("download")} تصدير التقدّم</a></div>
 
@@ -1044,8 +1051,48 @@ VIEWS.account=function(){
       <button class="btn danger block" onclick="Acc.del()">حذف الحساب نهائيًا</button></div>
   </div></div>`);
 };
+function hourLabel(h){
+  const n=h%12===0?12:h%12;
+  const part=h===12?" ظهرًا":h<12?" صباحًا":h<18?" عصرًا":" مساءً";
+  return num(n)+part;
+}
+function notifyBody(){
+  if(!Push.ready) return `<div class="empty" style="padding:18px">جارٍ التحقّق…</div>`;
+  const st=Push.state;
+  if(st==="needs-install") return `<p class="hint">${ic("home")} على الآيفون تصل الإشعارات فقط بعد إضافة الموقع إلى الشاشة الرئيسية. افتح قائمة المشاركة ثم «إضافة إلى الشاشة الرئيسية»، وافتح الموقع من الأيقونة الجديدة وعُد إلى هنا.</p>`;
+  if(st==="unsupported") return `<p class="hint">${ic("close")} هذا المتصفّح لا يدعم الإشعارات. جرّب كروم على أندرويد أو سفاري على آيفون بعد إضافة الموقع إلى الشاشة الرئيسية.</p>`;
+  if(st==="blocked") return `<p class="hint">${ic("close")} الإشعارات محظورة لهذا الموقع في إعدادات المتصفّح. اسمح بها من إعدادات الموقع ثم عُد إلى هنا.</p>`;
+  const hours=[6,7,8,9,12,15,17,18,19,20,21,22];
+  const h=S.me.user.notify_hour;
+  if(st==="off") return `<button class="btn primary block" onclick="Acc.notifyOn()">${ic("bell")} فعّل الإشعار اليومي</button>`;
+  return `<div class="field"><label>وقت التذكير</label>
+      <div class="chiprow">${hours.map(x=>
+        `<button class="chip ${h===x?"on":""}" onclick="Acc.hour(${x})">${hourLabel(x)}</button>`).join("")}</div></div>
+    <div class="btnrow">
+      <button class="btn soft" onclick="Acc.notifyTest()">إرسال تجربة</button>
+      <button class="btn ghost" onclick="Acc.notifyOff()">إيقاف الإشعار</button></div>`;
+}
 const Acc={
   _pub:null,
+  async notifyOn(){
+    try{ await Push.enable(); await refreshMe(); R.render();
+      toast("تم تفعيل الإشعار اليومي","ok"); }
+    catch(e){ toast(e.error||"تعذّر تفعيل الإشعارات","bad"); R.render(); }
+  },
+  async notifyOff(){
+    try{ await Push.disable(); await refreshMe(); R.render(); toast("تم إيقاف الإشعار","ok"); }
+    catch(e){ toast(e.error||"تعذّر الإيقاف","bad"); }
+  },
+  async notifyTest(){
+    try{ await api("/api/push/test",{body:{}}); toast("أُرسلت التجربة، تابع إشعارات جهازك","ok"); }
+    catch(e){ toast(e.error||"تعذّر إرسال التجربة","bad"); }
+  },
+  async hour(h){
+    const old=S.me.user.notify_hour; S.me.user.notify_hour=h; R.render();
+    try{ await api("/api/settings",{body:{notify_hour:h,tz_offset:tzOffset()}});
+      toast("وقت التذكير "+hourLabel(h),"ok"); }
+    catch(e){ S.me.user.notify_hour=old; R.render(); toast(e.error||"تعذّر الحفظ","bad"); }
+  },
   pub(v){ S.me.user.public=v; R.render(); },
   theme(t){ try{localStorage.setItem("theme",t);}catch(e){} Theme.apply(); R.render(); },
   async save(){
@@ -1074,7 +1121,69 @@ const Acc={
 };
 
 /* ══════════════════ التشغيل ══════════════════ */
-if("serviceWorker" in navigator){ addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{})); }
+/* ══════════════════ الإشعار اليومي ══════════════════ */
+const Push={
+  reg:null, sub:null, ready:false,
+  get supported(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; },
+  // على آيفون لا تعمل الإشعارات إلا بعد إضافة الموقع إلى الشاشة الرئيسية
+  get iosNeedsInstall(){
+    const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||
+      (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+    return ios && !window.matchMedia("(display-mode: standalone)").matches && !navigator.standalone;
+  },
+  get state(){
+    if(!this.supported) return this.iosNeedsInstall?"needs-install":"unsupported";
+    if(Notification.permission==="denied") return "blocked";
+    return this.sub?"on":"off";
+  },
+  async init(){
+    if(!this.supported||!("serviceWorker" in navigator)) { this.ready=true; return; }
+    try{
+      this.reg=await navigator.serviceWorker.ready;
+      this.sub=await this.reg.pushManager.getSubscription();
+    }catch(e){}
+    this.ready=true;
+    // اشتراك محفوظ على الجهاز لكن الحساب يظنّ الإشعارات مطفأة: نعيد تسجيله
+    if(this.sub&&S.me&&!S.me.user.notify_on){ try{ await this.save(); }catch(e){} }
+  },
+  async save(){
+    const j=this.sub.toJSON();
+    await api("/api/push/subscribe",{body:{
+      endpoint:j.endpoint, keys:j.keys, tz_offset:tzOffset(),
+      hour:S.me?S.me.user.notify_hour:20}});
+    if(S.me) S.me.user.notify_on=true;
+  },
+  async enable(){
+    if(this.state==="needs-install")
+      throw {error:"أضف الموقع إلى الشاشة الرئيسية أولًا، ثم افتحه من هناك وفعّل الإشعارات."};
+    if(!this.supported) throw {error:"هذا المتصفّح لا يدعم الإشعارات."};
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted") throw {error:"لم يُسمح بالإشعارات. فعّلها من إعدادات المتصفّح."};
+    this.reg=await navigator.serviceWorker.ready;
+    const {key}=await api("/api/push/key");
+    this.sub=await this.reg.pushManager.getSubscription();
+    if(!this.sub) this.sub=await this.reg.pushManager.subscribe({
+      userVisibleOnly:true, applicationServerKey:urlB64(key)});
+    await this.save();
+  },
+  async disable(){
+    try{ if(this.sub) await this.sub.unsubscribe(); }catch(e){}
+    const ep=this.sub?this.sub.toJSON().endpoint:"";
+    this.sub=null;
+    await api("/api/push/unsubscribe",{body:{endpoint:ep}});
+    if(S.me) S.me.user.notify_on=false;
+  }
+};
+const tzOffset=()=>-new Date().getTimezoneOffset();
+function urlB64(s){
+  const pad="=".repeat((4-s.length%4)%4);
+  const raw=atob((s+pad).replace(/-/g,"+").replace(/_/g,"/"));
+  return Uint8Array.from(raw,c=>c.charCodeAt(0));
+}
+if("serviceWorker" in navigator){
+  addEventListener("load",()=>navigator.serviceWorker.register("/sw.js")
+    .then(()=>Push.init()).catch(()=>{}));
+}
 boot();
 '''
 
@@ -1100,7 +1209,7 @@ ICON_SVG = r'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
 <path d="M162 150v-24h72v24"/>
 </g></svg>'''
 
-SW_JS = r'''const CACHE="lotg-v3";
+SW_JS = r'''const CACHE="lotg-v4";
 const SHELL=["/","/icon.svg","/manifest.webmanifest"];
 self.addEventListener("install",e=>{
   self.skipWaiting();
@@ -1108,6 +1217,25 @@ self.addEventListener("install",e=>{
 });
 self.addEventListener("activate",e=>{
   e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
+});
+self.addEventListener("push",e=>{
+  let d={};
+  try{ d=e.data?e.data.json():{}; }catch(err){ d={body:e.data?e.data.text():""}; }
+  const title=d.title||"قوانين اللعبة";
+  e.waitUntil(self.registration.showNotification(title,{
+    body:d.body||"سؤال اليوم بانتظارك.",
+    icon:"/icon.svg", badge:"/icon.svg", dir:"rtl", lang:"ar",
+    tag:d.tag||"daily", renotify:true,
+    data:{url:d.url||"/"}
+  }));
+});
+self.addEventListener("notificationclick",e=>{
+  e.notification.close();
+  const url=new URL((e.notification.data&&e.notification.data.url)||"/",self.location.origin).href;
+  e.waitUntil(clients.matchAll({type:"window",includeUncontrolled:true}).then(ws=>{
+    for(const w of ws){ if(w.url.startsWith(self.location.origin)&&"focus" in w) return w.focus(); }
+    return clients.openWindow(url);
+  }));
 });
 self.addEventListener("fetch",e=>{
   const u=new URL(e.request.url);

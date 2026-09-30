@@ -7,6 +7,7 @@
     ui.py         الواجهة (صفحة واحدة)
 """
 
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import push as WP
 import questions as QB
 import ui
 
@@ -82,6 +84,11 @@ class User(db.Model):
     public = db.Column(db.Boolean, default=True)
     last_active = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # الإشعار اليومي
+    notify_on = db.Column(db.Boolean, default=False)
+    notify_hour = db.Column(db.Integer, default=20)     # بتوقيت المستخدم المحلي
+    tz_offset = db.Column(db.Integer, default=180)      # دقائق إزاحة عن UTC
+    notified_on = db.Column(db.Date, nullable=True)     # يمنع تكرار إشعار اليوم
 
     @property
     def name(self):
@@ -126,6 +133,24 @@ class Activity(db.Model):
     __table_args__ = (db.UniqueConstraint('user_id', 'day', name='uq_user_day'),)
 
 
+class PushSub(db.Model):
+    """اشتراك متصفّح واحد في الإشعارات. للمستخدم الواحد جهاز أو أكثر."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    endpoint = db.Column(db.Text, nullable=False)
+    endpoint_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    p256dh = db.Column(db.String(140), nullable=False)
+    auth = db.Column(db.String(40), nullable=False)
+    failures = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Setting(db.Model):
+    """إعدادات الخادم الدائمة، ومنها مفتاحا الإشعارات."""
+    key = db.Column(db.String(40), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+
+
 # ─────────────────────────────────── ترقية بنية قاعدة بيانات قائمة
 NEW_COLUMNS = {
     'user': {'display_name': 'VARCHAR(60)', 'best_streak': 'INTEGER DEFAULT 0',
@@ -134,7 +159,12 @@ NEW_COLUMNS = {
                  'bookmarked': 'BOOLEAN DEFAULT FALSE'},
     'test_result': {'mode': "VARCHAR(20) DEFAULT 'mixed'"},
     'activity': {'daily_qid': 'VARCHAR(32)'},
+    'push_sub': {'failures': 'INTEGER DEFAULT 0'},
 }
+NEW_COLUMNS['user'].update({
+    'notify_on': 'BOOLEAN DEFAULT FALSE', 'notify_hour': 'INTEGER DEFAULT 20',
+    'tz_offset': 'INTEGER DEFAULT 180', 'notified_on': 'DATE',
+})
 
 
 def _q(table):
@@ -529,7 +559,8 @@ def me():
     return jsonify(
         auth=True,
         user={'username': u.username, 'display_name': u.display_name or '', 'name': u.name,
-              'test_minutes': u.test_minutes or 10, 'public': bool(u.public)},
+              'test_minutes': u.test_minutes or 10, 'public': bool(u.public),
+              'notify_on': bool(u.notify_on), 'notify_hour': u.notify_hour if u.notify_hour is not None else 20},
         stats=user_stats(u),
         scopes=[QB.ALL_SCOPE] + QB.CATEGORIES,
         all_scope=QB.ALL_SCOPE,
@@ -554,6 +585,18 @@ def settings():
         u.display_name = ((d.get('display_name') or '').strip()[:60]) or None
     if 'public' in d:
         u.public = bool(d['public'])
+    if 'notify_hour' in d:
+        try:
+            h = int(d['notify_hour'])
+        except (TypeError, ValueError):
+            return jsonify(error='ساعة غير صحيحة.'), 400
+        if not 0 <= h <= 23:
+            return jsonify(error='الساعة من 0 إلى 23.'), 400
+        if h != u.notify_hour:
+            u.notify_hour = h
+            u.notified_on = None       # الوقت الجديد يسري من اليوم نفسه
+    if 'tz_offset' in d:
+        remember_tz(u, d['tz_offset'])
     db.session.commit()
     return jsonify(ok=True)
 
@@ -920,6 +963,181 @@ def leaderboard():
     me_info['listed'] = my_row is not None
     me_info['rank'] = (items.index(my_row) + 1) if my_row else None
     return jsonify(items=items, me=me_info, hidden=not bool(u.public))
+
+
+# ═════════════════════════════════ الإشعار اليومي ═════════════════════════════════
+# الموضوع الذي تراه خدمة الدفع. عنوان الموقع مقبول حسب RFC 8292، ولا يكشف
+# بريد أحد لخوادم غوغل وآبل.
+VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', '') or 'https://other-refereea.onrender.com'
+CRON_SECRET = os.environ.get('CRON_SECRET', '').strip()
+_vapid = {}
+
+
+def vapid_keys():
+    """يرجّع (سرّي، معلن). يؤخذان من البيئة، وإلا يولَّدان مرة ويُحفظان في القاعدة."""
+    if _vapid:
+        return _vapid['private'], _vapid['public']
+    priv = os.environ.get('VAPID_PRIVATE_KEY', '').strip()
+    if priv:
+        pub = os.environ.get('VAPID_PUBLIC_KEY', '').strip() or WP.public_from_private(priv)
+    else:
+        row = db.session.get(Setting, 'vapid_private')
+        if row is None:
+            priv, pub = WP.generate_keys()
+            db.session.add(Setting(key='vapid_private', value=priv))
+            db.session.commit()
+        else:
+            priv = row.value
+            pub = WP.public_from_private(priv)
+    _vapid.update(private=priv, public=pub)
+    return priv, pub
+
+
+def remember_tz(u, raw):
+    """يحفظ إزاحة المستخدم عن UTC بالدقائق، كما يرسلها المتصفّح."""
+    try:
+        off = int(raw)
+    except (TypeError, ValueError):
+        return
+    if -840 <= off <= 840 and off != u.tz_offset:
+        u.tz_offset = off
+
+
+def local_now(u):
+    return datetime.utcnow() + timedelta(minutes=u.tz_offset if u.tz_offset is not None else 180)
+
+
+def send_to_user(u, data):
+    """يرسل إلى كل أجهزة المستخدم ويحذف الاشتراكات الميتة. يرجّع عدد ما نجح."""
+    priv, pub = vapid_keys()
+    sent = 0
+    for sub in PushSub.query.filter_by(user_id=u.id).all():
+        try:
+            WP.send({'endpoint': sub.endpoint, 'p256dh': sub.p256dh, 'auth': sub.auth},
+                    data, priv, pub, VAPID_SUBJECT)
+            sub.failures = 0
+            sent += 1
+        except WP.PushGone:
+            db.session.delete(sub)
+        except Exception as exc:
+            sub.failures = (sub.failures or 0) + 1
+            app.logger.warning('تعذّر إرسال إشعار: %s', exc)
+            if sub.failures >= 5:      # خدمة الدفع ترفض هذا الاشتراك باستمرار
+                db.session.delete(sub)
+    db.session.commit()
+    return sent
+
+
+def daily_payload(u):
+    return {'title': 'سؤال اليوم بانتظارك',
+            'body': 'يالله يا %s، حل سؤال اليوم وحافظ على سلسلتك.' % u.name,
+            'url': '/', 'tag': 'daily'}
+
+
+@app.get('/api/push/key')
+def push_key():
+    return jsonify(key=vapid_keys()[1])
+
+
+@app.post('/api/push/subscribe')
+def push_subscribe():
+    u, err = need_user()
+    if err:
+        return err
+    d = request.get_json(silent=True) or {}
+    endpoint = (d.get('endpoint') or '').strip()
+    keys = d.get('keys') or {}
+    p256dh, auth = (keys.get('p256dh') or '').strip(), (keys.get('auth') or '').strip()
+    if not endpoint.startswith('https://') or not p256dh or not auth:
+        return jsonify(error='بيانات الاشتراك غير مكتملة.'), 400
+    if len(endpoint) > 2000 or len(p256dh) > 140 or len(auth) > 40:
+        return jsonify(error='بيانات الاشتراك أطول من المتوقّع.'), 400
+
+    h = hashlib.sha256(endpoint.encode()).hexdigest()
+    sub = PushSub.query.filter_by(endpoint_hash=h).first()
+    if sub is None:
+        sub = PushSub(user_id=u.id, endpoint=endpoint, endpoint_hash=h)
+        db.session.add(sub)
+    sub.user_id = u.id            # الجهاز نفسه قد ينتقل إلى حساب آخر
+    sub.p256dh, sub.auth, sub.failures = p256dh, auth, 0
+    u.notify_on = True
+    if u.notified_on == date.today():
+        u.notified_on = None      # جهاز جديد اليوم يستحقّ إشعار اليوم
+    remember_tz(u, d.get('tz_offset'))
+    if 'hour' in d:
+        try:
+            hr = int(d['hour'])
+            if 0 <= hr <= 23:
+                u.notify_hour = hr
+        except (TypeError, ValueError):
+            pass
+    db.session.commit()
+    return jsonify(ok=True, hour=u.notify_hour)
+
+
+@app.post('/api/push/unsubscribe')
+def push_unsubscribe():
+    u, err = need_user()
+    if err:
+        return err
+    endpoint = ((request.get_json(silent=True) or {}).get('endpoint') or '').strip()
+    q = PushSub.query.filter_by(user_id=u.id)
+    if endpoint:
+        q = q.filter_by(endpoint_hash=hashlib.sha256(endpoint.encode()).hexdigest())
+    for sub in q.all():
+        db.session.delete(sub)
+    if not PushSub.query.filter_by(user_id=u.id).count():
+        u.notify_on = False
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.post('/api/push/test')
+def push_test():
+    u, err = need_user()
+    if err:
+        return err
+    if rate_limited('push-test:%s' % u.id):
+        return jsonify(error='انتظر قليلًا قبل إرسال تجربة أخرى.'), 429
+    if not PushSub.query.filter_by(user_id=u.id).count():
+        return jsonify(error='لا يوجد جهاز مشترك في الإشعارات.'), 400
+    sent = send_to_user(u, {'title': 'تجربة ناجحة',
+                            'body': 'هكذا سيصلك تذكير سؤال اليوم.',
+                            'url': '/', 'tag': 'test'})
+    if not sent:
+        return jsonify(error='لم يصل الإشعار إلى أي جهاز. جرّب إيقاف الإشعارات وتفعيلها.'), 502
+    return jsonify(ok=True, sent=sent)
+
+
+@app.post('/api/push/dispatch')
+def push_dispatch():
+    """يُستدعى من مجدول خارجي كل ربع ساعة، ويرسل لمن حلّت ساعته ولم يُجب بعد."""
+    if CRON_SECRET and request.headers.get('X-Cron-Secret', '') != CRON_SECRET:
+        return jsonify(error='forbidden'), 403
+    today_utc = date.today()
+    sent = skipped = 0
+    users = (User.query
+             .filter(User.notify_on == True)  # noqa: E712
+             .filter(db.or_(User.notified_on == None, User.notified_on < today_utc))  # noqa: E711
+             .all())
+    for u in users:
+        now = local_now(u)
+        if now.hour != (u.notify_hour if u.notify_hour is not None else 20):
+            continue
+        if u.notified_on == now.date():      # أُرسل اليوم بتوقيت المستخدم
+            continue
+        act = Activity.query.filter_by(user_id=u.id, day=now.date()).first()
+        if act and act.answers:              # حلّ شيئًا اليوم، فلا داعي للتذكير
+            u.notified_on = now.date()
+            skipped += 1
+            continue
+        if send_to_user(u, daily_payload(u)):
+            u.notified_on = now.date()
+            sent += 1
+        else:
+            u.notify_on = bool(PushSub.query.filter_by(user_id=u.id).count())
+    db.session.commit()
+    return jsonify(ok=True, sent=sent, skipped=skipped, considered=len(users))
 
 
 if __name__ == '__main__':
