@@ -307,9 +307,7 @@ HTML = r'''<!doctype html>
 <div id="authScreen" class="authwrap" hidden>
   <div class="authcard">
     <div class="logo"><div class="logomark" id="authLogo"></div>
-      <div class="logotxt"><b>قوانين اللعبة</b><small>منصّة إعداد الحكّام</small></div></div>
-    <h1 id="authTitle">أهلًا بك أيها الحكم</h1>
-    <p class="sub" id="authSub">سجّل دخولك لمتابعة تقدّمك وسلسلة أيامك.</p>
+      <div class="logotxt"><b>قوانين اللعبة</b></div></div>
     <div class="seg">
       <button id="tabLogin" class="on" onclick="A.mode('login')">تسجيل الدخول</button>
       <button id="tabReg" onclick="A.mode('register')">حساب جديد</button>
@@ -319,10 +317,10 @@ HTML = r'''<!doctype html>
         <input id="u" autocomplete="username" required minlength="3" placeholder="مثال: saud07"></div>
       <div class="field" id="nameField" hidden><label for="dn">الاسم الظاهر (اختياري)</label>
         <input id="dn" autocomplete="nickname" placeholder="يظهر في لوحة الترتيب"></div>
-      <div class="field"><label for="p">الرمز الرقمي</label>
+      <div class="field"><label for="p">كلمة المرور</label>
         <input id="p" type="password" inputmode="numeric" pattern="[0-9]*" required
-               minlength="4" maxlength="8" placeholder="من 4 إلى 8 أرقام">
-        <div class="hint">رمز رقمي قصير يسهل تذكّره، ولا يُستخدم في أي مكان آخر.</div></div>
+               minlength="4" maxlength="8" placeholder="من 4 إلى 8 أرقام"
+               dir="ltr" lang="en" spellcheck="false" autocapitalize="off" autocorrect="off"></div>
       <button class="btn primary block" id="authBtn" type="submit">دخول</button>
       <p class="err" id="authMsg"></p>
     </form>
@@ -333,7 +331,7 @@ HTML = r'''<!doctype html>
 <div id="shell" class="shell" hidden>
   <aside class="side">
     <div class="logo"><div class="logomark" id="sideLogo"></div>
-      <div class="logotxt"><b>قوانين اللعبة</b><small>منصّة إعداد الحكّام</small></div></div>
+      <div class="logotxt"><b>قوانين اللعبة</b></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="sidefoot">
       <button class="userchip" onclick="R.go('account')">
@@ -438,7 +436,7 @@ const Theme={
 matchMedia("(prefers-color-scheme:dark)").addEventListener("change",()=>{if(Theme.get()==="auto"){Theme.apply();R.render();}});
 
 /* ══════════════════ الحالة ══════════════════ */
-const S={me:null,view:"home",daily:null,dailyDone:false,
+const S={me:null,view:"home",daily:null,dailyDone:false,dailyResult:null,
   test:null,tIdx:0,answers:[],timerId:null,remain:0,startedAt:0,result:null,
   cfg:{scope:"",count:10,timer:true,mode:"mixed"},
   study:{scope:"",filter:"all",search:"",items:[],open:null,loading:false},
@@ -515,9 +513,6 @@ const A={
     $("#tabLogin").classList.toggle("on",m==="login");
     $("#tabReg").classList.toggle("on",m==="register");
     $("#nameField").hidden=m!=="register";
-    $("#authTitle").textContent=m==="login"?"أهلًا بك أيها الحكم":"أنشئ حسابك";
-    $("#authSub").textContent=m==="login"?"سجّل دخولك لمتابعة تقدّمك وسلسلة أيامك."
-      :"اسم مستخدم ورمز رقمي، ويُحفظ تقدّمك تلقائيًا.";
     $("#authBtn").textContent=m==="login"?"دخول":"إنشاء الحساب";
     $("#authMsg").textContent="";
   },
@@ -624,27 +619,36 @@ async function loadDaily(){
   const c=$("#dailyCard"); if(!c) return;
   try{
     const d=await api("/api/daily");
-    S.daily=d.question; S.dailyDone=false;
+    S.daily=d.question; S.dailyDone=!!d.answered; S.dailyResult=d.answered?d:null;
     if(!S.daily){ c.innerHTML=`<div class="empty"><span class="big">🎉</span>أنهيت كل الأسئلة المتاحة اليوم.</div>`; return; }
     renderDaily();
   }catch(e){ c.innerHTML=`<div class="empty">${esc(e.error||"تعذّر تحميل سؤال اليوم")}</div>`; }
 }
+function dailyHead(q){
+  return `<div class="badge">${ic("spark")} سؤال اليوم · ${esc(q.category)}</div>
+    ${q.topic?`<div class="badge dim" style="margin-inline-start:6px">${esc(q.topic)}</div>`:""}
+    <p class="qtext">${esc(q.q)}</p>`;
+}
 function renderDaily(){
   const c=$("#dailyCard"); if(!c||!S.daily) return;
-  const q=S.daily;
-  c.innerHTML=`<div class="badge">${ic("spark")} سؤال اليوم · ${esc(q.category)}</div>
-    ${q.topic?`<div class="badge dim" style="margin-inline-start:6px">${esc(q.topic)}</div>`:""}
-    <p class="qtext">${esc(q.q)}</p>
-    ${optsHTML(q,"answerDaily")}<div id="dFeed"></div>`;
+  const q=S.daily, r=S.dailyResult;
+  if(r){   // أُجيب عنه اليوم: يُعرض بحالته، ولا يُستبدل بسؤال جديد
+    c.innerHTML=dailyHead(q)+optsHTML(q,null,{correct:r.correct_index,picked:r.your_index})+
+      `<div id="dFeed">${explainHTML(r,r.correct)}
+        <p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p></div>`;
+    return;
+  }
+  c.innerHTML=dailyHead(q)+optsHTML(q,"answerDaily")+`<div id="dFeed"></div>`;
 }
 async function answerDaily(i){
   if(S.dailyDone) return; S.dailyDone=true;
   const q=S.daily;
   try{
     const d=await api("/api/answer",{body:{qid:q.id,choice:i,mode:"daily"}});
+    S.dailyResult=Object.assign({},d,{your_index:i});
     $("#dailyCard").querySelector(".opts").outerHTML=optsHTML(q,null,{correct:d.correct_index,picked:i});
     $("#dFeed").innerHTML=explainHTML(d,d.correct)+
-      `<div class="btnrow" style="margin-top:12px"><button class="btn soft sm" onclick="loadDaily()">${ic("refresh")} سؤال آخر</button></div>`;
+      `<p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p>`;
     await refreshMe(); updateChrome();
   }catch(e){ S.dailyDone=false; toast(e.error||"تعذّر إرسال الإجابة","bad"); }
 }
@@ -1001,11 +1005,14 @@ VIEWS.account=function(){
           <button class="chip ${!u.public?"on":""}" onclick="Acc.pub(false)">مخفي</button></div></div>
       <button class="btn primary block" onclick="Acc.save()">حفظ التغييرات</button></div>
 
-    <div class="card"><h3>تغيير الرمز الرقمي</h3><p class="sub">من 4 إلى 8 أرقام.</p>
-      <div class="field"><label for="pOld">الرمز الحالي</label><input id="pOld" type="password" inputmode="numeric"></div>
-      <div class="field"><label for="pNew">الرمز الجديد</label><input id="pNew" type="password" inputmode="numeric"></div>
-      <div class="field"><label for="pNew2">تأكيد الرمز الجديد</label><input id="pNew2" type="password" inputmode="numeric"></div>
-      <button class="btn soft block" onclick="Acc.pin()">تحديث الرمز</button></div>
+    <div class="card"><h3>تغيير كلمة المرور</h3><p class="sub">من 4 إلى 8 أرقام.</p>
+      <div class="field"><label for="pOld">كلمة المرور الحالية</label>
+        <input id="pOld" type="password" inputmode="numeric" dir="ltr" lang="en" autocapitalize="off"></div>
+      <div class="field"><label for="pNew">كلمة المرور الجديدة</label>
+        <input id="pNew" type="password" inputmode="numeric" dir="ltr" lang="en" autocapitalize="off"></div>
+      <div class="field"><label for="pNew2">تأكيد كلمة المرور</label>
+        <input id="pNew2" type="password" inputmode="numeric" dir="ltr" lang="en" autocapitalize="off"></div>
+      <button class="btn soft block" onclick="Acc.pin()">تحديث كلمة المرور</button></div>
   </div>
   <div class="stack">
     <div class="card"><h3>المظهر</h3><p class="sub">يُحفظ اختيارك على هذا الجهاز.</p>
@@ -1020,7 +1027,8 @@ VIEWS.account=function(){
       <div class="divider"></div>
       <h3 style="font-size:14.5px;color:var(--bad)">حذف الحساب</h3>
       <p class="sub">يُحذف حسابك وكل تقدّمك نهائيًا ولا يمكن التراجع.</p>
-      <div class="field"><label for="delPin">أدخل رمزك للتأكيد</label><input id="delPin" type="password" inputmode="numeric"></div>
+      <div class="field"><label for="delPin">أدخل كلمة المرور للتأكيد</label>
+        <input id="delPin" type="password" inputmode="numeric" dir="ltr" lang="en" autocapitalize="off"></div>
       <button class="btn danger block" onclick="Acc.del()">حذف الحساب نهائيًا</button></div>
   </div></div>`);
 };
@@ -1037,15 +1045,15 @@ const Acc={
   },
   async pin(){
     const a=$("#pOld").value,b=$("#pNew").value,c=$("#pNew2").value;
-    if(b!==c) return toast("الرمز الجديد غير متطابق","bad");
+    if(b!==c) return toast("كلمة المرور الجديدة غير متطابقة","bad");
     try{ await api("/api/pin",{body:{current:a,new:b}});
       $("#pOld").value=$("#pNew").value=$("#pNew2").value="";
-      toast("تم تحديث الرمز","ok"); }
+      toast("تم تحديث كلمة المرور","ok"); }
     catch(e){ toast(e.error||"تعذّر التحديث","bad"); }
   },
   async del(){
     const pin=$("#delPin").value;
-    if(!pin) return toast("أدخل رمزك أولًا","bad");
+    if(!pin) return toast("أدخل كلمة المرور أولًا","bad");
     if(!await confirmBox("حذف الحساب","سيُحذف حسابك وكل تقدّمك نهائيًا ولا يمكن استرجاعه.","احذف نهائيًا",true)) return;
     try{ await api("/api/account/delete",{method:"POST",body:{pin}});
       toast("تم حذف الحساب"); setTimeout(()=>location.reload(),900); }

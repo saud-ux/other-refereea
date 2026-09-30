@@ -122,6 +122,7 @@ class Activity(db.Model):
     day = db.Column(db.Date, nullable=False, index=True)
     answers = db.Column(db.Integer, default=0)
     correct = db.Column(db.Integer, default=0)
+    daily_qid = db.Column(db.String(32))      # سؤال اليوم المثبّت لهذا المستخدم
     __table_args__ = (db.UniqueConstraint('user_id', 'day', name='uq_user_day'),)
 
 
@@ -132,6 +133,7 @@ NEW_COLUMNS = {
     'progress': {'seen_count': 'INTEGER DEFAULT 0', 'correct_count': 'INTEGER DEFAULT 0',
                  'bookmarked': 'BOOLEAN DEFAULT FALSE'},
     'test_result': {'mode': "VARCHAR(20) DEFAULT 'mixed'"},
+    'activity': {'daily_qid': 'VARCHAR(32)'},
 }
 
 
@@ -267,12 +269,19 @@ def progress_map(u):
     return {p.qid: p for p in Progress.query.filter_by(user_id=u.id).all()}
 
 
-def bump_activity(u, correct):
+def today_activity(u):
+    """صف نشاط اليوم، يُنشأ إن لم يكن موجودًا."""
     today = date.today()
     a = Activity.query.filter_by(user_id=u.id, day=today).first()
     if not a:
         a = Activity(user_id=u.id, day=today, answers=0, correct=0)
         db.session.add(a)
+        db.session.flush()
+    return a
+
+
+def bump_activity(u, correct):
+    a = today_activity(u)
     a.answers = (a.answers or 0) + 1
     a.correct = (a.correct or 0) + (1 if correct else 0)
 
@@ -474,7 +483,7 @@ def register():
     if len(username) < 3 or len(username) > 40:
         return jsonify(error='اسم المستخدم من 3 إلى 40 حرفًا.'), 400
     if not (4 <= len(pin) <= 8) or not pin.isdigit():
-        return jsonify(error='الرمز الرقمي من 4 إلى 8 أرقام.'), 400
+        return jsonify(error='كلمة المرور من 4 إلى 8 أرقام.'), 400
     if User.query.filter_by(username=username).first():
         return jsonify(error='اسم المستخدم مستخدم بالفعل.'), 409
     u = User(username=username, pin_hash=generate_password_hash(pin),
@@ -497,7 +506,7 @@ def login():
         return jsonify(error='محاولات كثيرة. انتظر بضع دقائق ثم أعد المحاولة.'), 429
     u = User.query.filter_by(username=username).first()
     if not u or not check_password_hash(u.pin_hash, pin):
-        return jsonify(error='اسم المستخدم أو الرمز غير صحيح.'), 401
+        return jsonify(error='اسم المستخدم أو كلمة المرور غير صحيحة.'), 401
     _attempts.pop(key, None)
     session.permanent = True
     session['uid'] = u.id
@@ -557,9 +566,9 @@ def change_pin():
     d = request.get_json(silent=True) or {}
     cur, new = str(d.get('current') or ''), str(d.get('new') or '')
     if not check_password_hash(u.pin_hash, cur):
-        return jsonify(error='الرمز الحالي غير صحيح.'), 401
+        return jsonify(error='كلمة المرور الحالية غير صحيحة.'), 401
     if not (4 <= len(new) <= 8) or not new.isdigit():
-        return jsonify(error='الرمز الجديد من 4 إلى 8 أرقام.'), 400
+        return jsonify(error='كلمة المرور الجديدة من 4 إلى 8 أرقام.'), 400
     u.pin_hash = generate_password_hash(new)
     db.session.commit()
     return jsonify(ok=True)
@@ -572,7 +581,7 @@ def delete_account():
         return err
     d = request.get_json(silent=True) or {}
     if not check_password_hash(u.pin_hash, str(d.get('pin') or '')):
-        return jsonify(error='الرمز غير صحيح.'), 401
+        return jsonify(error='كلمة المرور غير صحيحة.'), 401
     Progress.query.filter_by(user_id=u.id).delete()
     TestResult.query.filter_by(user_id=u.id).delete()
     Activity.query.filter_by(user_id=u.id).delete()
@@ -617,15 +626,30 @@ def daily():
     if err:
         return err
     touch_streak(u)
-    pmap = progress_map(u)
     today = date.today()
-    pool = sorted(QB.QUESTIONS, key=lambda q: priority(pmap.get(q['id']), today))
-    best = priority(pmap.get(pool[0]['id']), today)
-    pool = [q for q in pool if priority(pmap.get(q['id']), today) == best]
-    act = Activity.query.filter_by(user_id=u.id, day=today).first()
-    seed = '%s-%s-%s' % (today.isoformat(), u.id, act.answers if act else 0)
-    q = random.Random(seed).choice(pool)
-    return jsonify(question=QB.public_view(q))
+    act = today_activity(u)
+
+    # يُختار سؤال اليوم مرة واحدة ثم يُثبَّت، فلا يتغيّر بالتنقّل بين الصفحات
+    # ولا بتغيّر تقدّم المستخدم خلال اليوم.
+    q = QB.QMAP.get(act.daily_qid or '')
+    if q is None:
+        pmap = progress_map(u)
+        ranked = sorted(QB.QUESTIONS, key=lambda x: priority(pmap.get(x['id']), today))
+        best = priority(pmap.get(ranked[0]['id']), today)
+        pool = [x for x in ranked if priority(pmap.get(x['id']), today) == best]
+        q = random.Random('%s-%s' % (today.isoformat(), u.id)).choice(pool)
+        act.daily_qid = q['id']
+    db.session.commit()
+
+    out = {'question': QB.public_view(q), 'answered': False}
+    p = Progress.query.filter_by(user_id=u.id, qid=q['id']).first()
+    if p and p.updated_at and p.updated_at.date() == today and p.last_correct is not None:
+        your = p.last_answer
+        out.update(answered=True, correct=bool(p.last_correct),
+                   correct_index=q['a'], your=your,
+                   your_index=q['options'].index(your) if your in q['options'] else -1,
+                   explanation=q['exp'], reference=q['ref'], page=q['page'])
+    return jsonify(**out)
 
 
 @app.post('/api/answer')
