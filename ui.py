@@ -664,11 +664,20 @@ function tilesHTML(){
   </button>`;
 }
 
+/* طرق الاختيار: الاسم ووصفه معًا، فلا يُشرح واحد منها ويُترك الباقي */
+const MODES={
+  mixed:  ["ذكي",     "يبدأ بما لم تحلّه، ثم بما أخطأت فيه، ثم بما حان موعد مراجعته."],
+  random: ["عشوائي",  "أسئلة بلا ترتيب من المادة التي اخترتها."],
+  hard:   ["صعب",     "أصعب أسئلة المادة أولًا."],
+};
+// دقيقة لكل سؤال، فالمدة تتبع الاختبار ولا تحتاج ضبطًا
+const testMinutes=()=>S.cfg.count;
+
 /* ملخّص إعداد الاختبار في أربع كلمات، بدل صفّ رقائق يطلب قرارًا */
 function cfgSummary(){
-  const c=S.cfg, mode={mixed:"ذكي",random:"عشوائي",hard:"الأصعب"}[c.mode]||"ذكي";
-  return [esc(c.scope||""), qty(c.count,"q"), mode,
-          c.timer?qty(S.me.user.test_minutes,"min"):"بلا مؤقت"];
+  const c=S.cfg;
+  return [esc(c.scope||""), qty(c.count,"q"), (MODES[c.mode]||MODES.mixed)[0],
+          c.timer?qty(testMinutes(),"min"):"بلا مؤقت"];
 }
 const cfgLine=()=>`<div class="cfgline">${cfgSummary().map(x=>`<span>${x}</span>`).join("")}</div>`;
 
@@ -832,15 +841,12 @@ function cfgFields(){
     <div class="field"><label>عدد الأسئلة</label>
       <div class="chiprow">${[5,10,20,30,50].map(n=>`<button class="chip ${c.count===n?"on":""}" onclick="S.cfg.count=${n};R.render()">${num(n)}</button>`).join("")}</div></div>
     <div class="field"><label>طريقة الاختيار</label>
-      <div class="chiprow">
-        <button class="chip ${c.mode==="mixed"?"on":""}" onclick="S.cfg.mode='mixed';R.render()">ذكي</button>
-        <button class="chip ${c.mode==="random"?"on":""}" onclick="S.cfg.mode='random';R.render()">عشوائي</button>
-        <button class="chip ${c.mode==="hard"?"on":""}" onclick="S.cfg.mode='hard';R.render()">الأصعب</button>
-      </div>
-      <div class="hint">«ذكي» يقدّم ما لم تحلّه وما أخطأت فيه وما حان موعد مراجعته.</div></div>
+      <div class="chiprow">${Object.entries(MODES).map(([k,v])=>
+        `<button class="chip ${c.mode===k?"on":""}" onclick="S.cfg.mode='${k}';R.render()">${v[0]}</button>`).join("")}</div>
+      <div class="hint">${(MODES[c.mode]||MODES.mixed)[1]}</div></div>
     <div class="field"><label>المؤقت</label>
       <div class="chiprow">
-        <button class="chip ${c.timer?"on":""}" onclick="S.cfg.timer=true;R.render()">مؤقت (${qty(S.me.user.test_minutes,"min")})</button>
+        <button class="chip ${c.timer?"on":""}" onclick="S.cfg.timer=true;R.render()">مؤقت (${qty(testMinutes(),"min")})</button>
         <button class="chip ${!c.timer?"on":""}" onclick="S.cfg.timer=false;R.render()">بدون مؤقت</button>
       </div></div>`;
 }
@@ -1053,10 +1059,9 @@ VIEWS.board=function(){
 VIEWS.account=function(){
   const u=S.me.user;
   mount(`<div class="cols"><div class="stack">
-    <div class="card"><h3>الملف الشخصي</h3><p class="sub">اسم المستخدم هو ما يظهر في لوحة الترتيب.</p>
-      <div class="field"><label>اسم المستخدم</label><input value="${esc(u.username)}" disabled></div>
-      <div class="field"><label for="acMin">مدة الاختبار بالدقائق</label><input id="acMin" type="number" min="1" max="60" value="${u.test_minutes}"></div>
-      <button class="btn primary block" onclick="Acc.save()">حفظ التغييرات</button></div>
+    <div class="card"><h3>حسابك</h3><p class="sub">اسم المستخدم هو ما يظهر في لوحة الترتيب.</p>
+      <div class="field" style="margin:0"><label>اسم المستخدم</label>
+        <input value="${esc(u.username)}" disabled></div></div>
 
     <div class="card"><h3>تغيير كلمة المرور</h3><p class="sub">من 4 إلى 8 أرقام.</p>
       <div class="field"><label for="pOld">كلمة المرور الحالية</label>
@@ -1127,12 +1132,6 @@ const Acc={
     catch(e){ [u.notify_hour,u.notify_minute]=old; R.render(); toast(e.error||"تعذّر الحفظ","bad"); }
   },
   theme(t){ try{localStorage.setItem("theme",t);}catch(e){} Theme.apply(); R.render(); },
-  async save(){
-    const body={test_minutes:+$("#acMin").value};
-    try{ await api("/api/settings",{body}); await refreshMe(); R.render();
-      toast("تم حفظ التغييرات","ok"); }
-    catch(e){ toast(e.error||"تعذّر الحفظ","bad"); }
-  },
   async pin(){
     const a=$("#pOld").value,b=$("#pNew").value,c=$("#pNew2").value;
     if(b!==c) return toast("كلمة المرور الجديدة غير متطابقة","bad");

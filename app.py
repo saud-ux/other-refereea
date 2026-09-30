@@ -78,7 +78,7 @@ class User(db.Model):
     username = db.Column(db.String(40), unique=True, nullable=False, index=True)
     pin_hash = db.Column(db.String(255), nullable=False)
     display_name = db.Column(db.String(60))   # لم يعد يُستعمل، يبقى لبيانات قديمة
-    test_minutes = db.Column(db.Integer, default=10)
+    test_minutes = db.Column(db.Integer, default=10)   # لم يعد يُستعمل، يبقى لبيانات قديمة
     streak = db.Column(db.Integer, default=0)
     best_streak = db.Column(db.Integer, default=0)
     public = db.Column(db.Boolean, default=True)
@@ -626,7 +626,6 @@ def me():
     return jsonify(
         auth=True,
         user={'username': u.username, 'name': u.name,
-              'test_minutes': u.test_minutes or 10,
               'notify_on': bool(u.notify_on),
               'notify_hour': u.notify_hour if u.notify_hour is not None else 20,
               'notify_minute': u.notify_minute or 0},
@@ -642,14 +641,6 @@ def settings():
     if err:
         return err
     d = request.get_json(silent=True) or {}
-    if 'test_minutes' in d:
-        try:
-            m = int(d['test_minutes'])
-        except (TypeError, ValueError):
-            return jsonify(error='قيمة غير صحيحة لمدة الاختبار.'), 400
-        if not 1 <= m <= 60:
-            return jsonify(error='مدة الاختبار من 1 إلى 60 دقيقة.'), 400
-        u.test_minutes = m
     if 'notify_hour' in d or 'notify_minute' in d:
         try:
             h = int(d.get('notify_hour', u.notify_hour or 0))
@@ -833,7 +824,8 @@ def build_test():
     scope_name, chosen = pick_questions(
         u, pmap, request.args.get('scope', QB.ALL_SCOPE), count, mode,
         request.args.get('filter', 'all'), (request.args.get('search') or '')[:60])
-    return jsonify(scope=scope_name, mode=mode, minutes=u.test_minutes or 10,
+    # دقيقة لكل سؤال، فالمدة تتبع الاختبار نفسه ولا تحتاج ضبطًا
+    return jsonify(scope=scope_name, mode=mode, minutes=max(1, len(chosen)),
                    questions=[QB.public_view(q) for q in chosen])
 
 
