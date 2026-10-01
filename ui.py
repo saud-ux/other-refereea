@@ -156,7 +156,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .tile.accent .v{color:var(--brand)}
 :root[data-theme="dark"] .tile.accent .v{color:var(--brand-2)}
 .tile.hot .v{color:var(--hot)}
-.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:15px;align-items:start}
+.cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:15px;align-items:start}
 .stack{display:flex;flex-direction:column;gap:15px}
 /* عنوان القسم يستحقّ فراغًا أوسع فوقه، ويكفيه الفراغ الموحّد تحته */
 .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 0}
@@ -206,6 +206,12 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .meter .lab span{color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
 .bar{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
 .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .5s}
+.cover{display:block;width:100%;text-align:start;background:none;border:0;color:inherit;font:inherit;
+  padding:9px 8px;margin:0 -8px;border-radius:var(--r-sm);cursor:pointer}
+.cover:hover{background:var(--surface-2)}
+.cover .lab .go{display:inline-grid;place-items:center;color:var(--brand)}
+.cover .lab .go .ic{width:15px;height:15px}
+:root[data-theme="dark"] .cover .lab .go{color:var(--brand-2)}
 .lead{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
 .lead:last-child{border-bottom:0}
 .rank{width:26px;height:26px;border-radius:var(--r-xs);flex:none;display:grid;place-items:center;
@@ -216,6 +222,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .lead b{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lead span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
 .lead.me{background:var(--surface-2);border-radius:var(--r-md);padding:10px;border-bottom:0;margin-top:6px}
+.lead .fire{flex:none;color:var(--hot);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lead .you{flex:none;padding:2px 8px;border-radius:999px;background:var(--brand);color:#fff;
   font-size:10.5px;font-weight:700}
 :root[data-theme="dark"] .lead .you{background:var(--brand-2);color:#06210f}
@@ -323,7 +330,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   .tabbar{display:grid}
   main{padding:0 16px 24px}
   .tiles{grid-template-columns:repeat(2,1fr)}
-  .cols{grid-template-columns:1fr}
+  .cols{grid-template-columns:minmax(0,1fr)}
   .top{padding:16px 0 0;align-items:flex-start;gap:10px}
   .hello{min-width:0}
   .hello b{font-size:18px}
@@ -438,7 +445,9 @@ const IC={
  spark:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
  whistle:'<circle cx="8.5" cy="13.5" r="5.5"/><path d="M14 11h7l-1.5 3H14M8.5 13.5h0"/>',
  download:'<path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16"/>',
- bell:'<path d="M18 8.5a6 6 0 1 0-12 0c0 5.2-2 6.5-2 6.5h16s-2-1.3-2-6.5z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/>'
+ bell:'<path d="M18 8.5a6 6 0 1 0-12 0c0 5.2-2 6.5-2 6.5h16s-2-1.3-2-6.5z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/>',
+ grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/>'
+      +'<rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>'
 };
 const MARK=__MARK__;
 const ic=(n,c)=>`<svg class="ic ${c||""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[n]||""}</svg>`;
@@ -528,7 +537,7 @@ const S={me:null,view:"home",daily:null,dailyDone:false,dailyResult:null,cfgOpen
   test:null,tIdx:0,answers:[],timerId:null,remain:0,startedAt:0,result:null,
   cfg:{scope:"",count:10,timer:true,mode:"mixed"},
   study:{scope:"",filter:"all",search:"",items:[],open:null,loading:false},
-  stats:null,board:null,mistakes:null};
+  stats:null,board:null,mistakes:null,coverAll:false};
 
 /* ══════════════════ التنقّل ══════════════════ */
 const PAGES=[
@@ -745,9 +754,9 @@ function tilesHTML(){
 
 /* طرق الاختيار: الاسم ووصفه معًا، فلا يُشرح واحد منها ويُترك الباقي */
 const MODES={
-  mixed:  ["ذكي",     "يبدأ بما لم تحلّه، ثم بما أخطأت فيه، ثم بما حان موعد مراجعته."],
-  random: ["عشوائي",  "أسئلة بلا ترتيب من المادة التي اخترتها."],
-  hard:   ["صعب",     "أصعب أسئلة المادة أولًا."],
+  mixed:  ["ذكي",     "يبدأ بما لم تحلّه، ثم بما أخطأت فيه، ثم بما حان موعد مراجعته، موزّعًا على المواد."],
+  random: ["عشوائي",  "أسئلة بلا ترتيب، موزّعة على المواد بالتساوي."],
+  hard:   ["صعب",     "أصعب الأسئلة أولًا، موزّعة على المواد."],
 };
 // دقيقة لكل سؤال، فالمدة تتبع الاختبار ولا تحتاج ضبطًا
 const testMinutes=()=>S.cfg.count;
@@ -827,6 +836,34 @@ async function answerDaily(i){
       `<p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p>`;
     await refreshMe(); updateChrome();
   }catch(e){ S.dailyDone=false; toast(e.error||"تعذّر إرسال الإجابة","bad"); }
+}
+/* التغطية: كم سؤالًا من كل مادة طرقتَه. المواد متفاوتة في عدد أسئلتها،
+   فالنسبة وحدها تكشف الفراغ الذي لا يُرى في الدقة ولا في عدد الإجابات. */
+const COVER_TOP=6;
+function coverHTML(rows){
+  const touched=rows.filter(r=>r.seen>0).length;
+  /* الأقل تغطية أولًا، وعند التساوي تتقدّم المادة الأكثر أسئلةً لأن فراغها أوسع */
+  const list=rows.slice().sort((a,b)=>a.coverage-b.coverage||b.total-a.total||a.law-b.law);
+  const shown=S.coverAll?list:list.slice(0,COVER_TOP);
+  const row=r=>`<button class="cover" onclick="Test.law('${esc(r.title)}')"
+      aria-label="اختبرني في ${esc(r.title)}">
+      <div class="meter" style="margin:0">
+        <div class="lab"><b>${esc(r.title)}</b>
+          <span>${r.seen?`${num(r.seen)} من ${num(r.total)}`:"لم تبدأ"}<span class="go">${ic("next")}</span></span></div>
+        <div class="bar"><i style="width:${r.seen?Math.max(3,Math.round(r.coverage)):0}%"></i></div>
+      </div></button>`;
+  return `<div class="card" id="coverCard"><h3>تغطيتك للمواد</h3>
+    <p class="sub">${touched?`بدأت ${qty(touched,"law")} من ${num(rows.length)}.`:"لم تبدأ أي مادة بعد."}
+      الأقل تغطيةً أولًا، واضغط مادةً لتختبر نفسك فيها.</p>
+    ${shown.map(row).join("")}
+    ${list.length>COVER_TOP?`<button class="btn ghost block sm" style="margin-top:12px" onclick="toggleCover()">
+      ${S.coverAll?"عرض أقل":`عرض كل المواد (${num(list.length)})`}</button>`:""}</div>`;
+}
+/* الطيّ يعيد رسم البطاقة وحدها، فلا يُعاد جلب الإحصائيات من الخادم */
+function toggleCover(){
+  S.coverAll=!S.coverAll;
+  const c=$("#coverCard");
+  if(c&&S.stats) c.outerHTML=coverHTML(S.stats.by_law);
 }
 function meterHTML(title,v){
   return `<div class="meter"><div class="lab"><b>${esc(title)}</b><span>${pct(v)}</span></div>
@@ -976,6 +1013,8 @@ const Test={
       d.asked=total; S.result=d; await refreshMe(); S.stats=null; R.render();
     }catch(e){ toast(e.error||"تعذّر إرسال النتيجة","bad"); R.render(); }
   },
+  /* من بطاقة التغطية: يثبّت المادة في الإعداد ثم يبدأ فورًا */
+  law(scope){ S.cfg.scope=scope; S.result=null; return this.start({scope:scope}); },
   close(){ S.result=null; R.render(); }
 };
 function begin(d,useTimer){
@@ -994,7 +1033,8 @@ function renderTestRun(){
   const a=S.answers[S.tIdx], done=S.answers.filter(x=>x).length;
   mount(`<div class="card">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px">
-      <div><div class="badge">${esc(t.scope)}</div>
+      <div><div class="badgerow" style="margin-bottom:4px"><div class="badge">${esc(t.scope)}</div>
+        ${t.laws>1?`<div class="badge dim">${ic("grid")} ${qty(t.laws,"law")}</div>`:""}</div>
         <div style="font-size:12.5px;color:var(--muted)">السؤال ${num(S.tIdx+1)} من ${num(n)}</div></div>
       ${S.useTimer?`<div style="text-align:start"><div style="font-size:11px;color:var(--muted)">الوقت المتبقي</div>
         <div class="timer" id="timer">--:--</div></div>`:`<div class="badge dim">بدون مؤقت</div>`}
@@ -1102,6 +1142,7 @@ VIEWS.stats=function(){
           <div class="card"><h3>نشاطك خلال آخر أربعة أسابيع</h3>
             <p class="sub">كل مربّع يوم، وكثافة اللون تعني عدد الأسئلة التي أجبت عنها.</p>
             <div class="heat">${d.calendar.map(c=>`<i class="${c.level?"l"+c.level:""}" title="${esc(c.day)}: ${num(c.count)}"></i>`).join("")}</div></div>
+          ${coverHTML(d.by_law)}
           <div class="card"><h3>الدقة حسب المادة</h3><p class="sub">مرتّبة من الأضعف إلى الأقوى.</p>
             ${d.by_law.filter(r=>r.answered>0).sort((a,b)=>a.accuracy-b.accuracy).map(r=>meterHTML(r.title,r.accuracy)).join("")
               ||`<div class="empty">لم تجب عن أي سؤال بعد.</div>`}</div>
@@ -1120,6 +1161,10 @@ VIEWS.stats=function(){
 };
 
 /* ══════════════════ لوحة الترتيب ══════════════════ */
+/* السلسلة بالنار وحدها كما في أعلى الشاشة، فالصفّ ضيّق ولا يحتمل كلمة ثالثة.
+   ومن انقطعت سلسلته لا يحمل صفرًا، كما لا يحملها الشريط العلوي. */
+const fireHTML=n=>n?`<span class="fire" title="سلسلة ${qty(n,"day")}"
+  aria-label="سلسلة ${qty(n,"day")}">🔥 ${num(n)}</span>`:"";
 VIEWS.board=function(){
   mount(`<div id="bWrap"><div class="empty">جارٍ التحميل…</div></div>`);
   (async()=>{
@@ -1132,14 +1177,17 @@ VIEWS.board=function(){
         ${d.items.length?d.items.map((x,i)=>`<div class="lead ${x.me?"me":""}">
           <span class="rank ${medal(i)}">${num(i+1)}</span>
           <b>${esc(x.name)}</b>${x.me?`<span class="you">أنت</span>`:""}
+          ${fireHTML(x.streak)}
           <span>${qty(x.mastered,"mastered")}</span><span>${pct(x.accuracy)}</span></div>`).join(""):`<div class="empty">لا توجد نتائج بعد.</div>`}
         ${d.me&&!d.me.listed?`<div class="lead me"><span class="rank">${d.me.rank?num(d.me.rank):"؟"}</span>
           <b>${esc(d.me.name)}</b><span class="you">أنت</span>
+          ${fireHTML(d.me.streak)}
           <span>${qty(d.me.mastered,"mastered")}</span></div>`:""}
       </div>
       <div class="card"><h3>كيف يُحتسب الترتيب؟</h3>
         <p class="sub" style="margin:0">يُحتسب السؤال «متقنًا» عندما تجيب عنه إجابة صحيحة ثلاث مرات متتالية بعد أن أخطأت فيه، أو عندما تجيب عنه صحيحًا من أول مرة.
-        الدقة هي نسبة إجاباتك الصحيحة من مجموع إجاباتك.</p>
+        الدقة هي نسبة إجاباتك الصحيحة من مجموع إجاباتك.
+        و🔥 عدد الأيام المتتالية التي ذاكرت فيها، وتنكسر إن مرّ يوم كامل بلا إجابة.</p>
       </div></div>`;
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
   })();

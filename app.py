@@ -297,6 +297,15 @@ def touch_streak(u):
     db.session.commit()
 
 
+def live_streak(streak, last_active):
+    """السلسلة المحفوظة في الجدول لا تُصفَّر إلا عند عودة صاحبها، فتبقى على
+    حالها بعد انقطاعه. فمن كان آخر نشاطه قبل أمس سلسلته منكسرة وإن بقي
+    رقمها مخزَّنًا. وهذا ما يُعرض في اللوحة حتى لا يحمل أحد رقمًا انتهى."""
+    if not last_active or last_active < date.today() - timedelta(days=1):
+        return 0
+    return int(streak or 0)
+
+
 def progress_map(u):
     return {p.qid: p for p in Progress.query.filter_by(user_id=u.id).all()}
 
@@ -824,6 +833,37 @@ def bookmark():
     return jsonify(ok=True, on=p.bookmarked)
 
 
+def spread(pool, count, rnd, tier):
+    """يختار من المجموعة موزّعًا على المواد، طبقةً بعد طبقة.
+
+    عدد أسئلة المواد متفاوت جدًا: المادة ١٢ فيها خمسون سؤالًا والمادة ٩ أربعة.
+    فالاختيار من الكومة كلّها يعطي المادة الكثيرة حصّةً أكبر من وزنها، وقد
+    لا تظهر المادة القليلة أبدًا في اختبار قصير. وهنا يُؤخذ سؤال من كل مادة
+    بالتناوب، فتُغطّى المواد كلّها قبل أن تُعاد مادةٌ مرّتين.
+
+    وترتيب النمط يبقى سيّد الاختيار: الطبقة الأعلى أهمّيةً تُستنفد قبل التي
+    تحتها، فلا يزيح التوزيعُ سؤالًا حان موعد مراجعته من أجل مادة أخرى.
+    """
+    out, i, n = [], 0, len(pool)
+    while i < n and len(out) < count:
+        key = tier(pool[i])
+        by_law, j = {}, i
+        while j < n and tier(pool[j]) == key:
+            by_law.setdefault(pool[j]['law'], []).append(pool[j])
+            j += 1
+        laws = list(by_law)
+        while laws and len(out) < count:
+            rnd.shuffle(laws)               # حتى لا تتصدّر المادة الأولى دائمًا
+            for law in list(laws):
+                if len(out) >= count:
+                    break
+                out.append(by_law[law].pop(0))
+                if not by_law[law]:
+                    laws.remove(law)
+        i = j
+    return out
+
+
 def pick_questions(u, pmap, scope, count, mode, filt, search):
     today = date.today()
     rnd = random.Random(os.urandom(16))
@@ -838,15 +878,20 @@ def pick_questions(u, pmap, scope, count, mode, filt, search):
         return scope_name, []
     if mode == 'random':
         rnd.shuffle(pool)
+        tier = lambda q: 0                                      # noqa: E731
     elif mode == 'hard':
         rnd.shuffle(pool)
         pool.sort(key=lambda q: -q['diff'])
+        tier = lambda q: -q['diff']                             # noqa: E731
     elif mode == 'mistakes':
+        # الأخطاء تُراجَع حيث وقعت، فلا يُوزَّع اختيارها على المواد
         pool.sort(key=lambda q: -(pmap[q['id']].wrong_count or 0))
+        tier = None
     else:  # ذكي
         rnd.shuffle(pool)
         pool.sort(key=lambda q: priority(pmap.get(q['id']), today))
-    chosen = pool[:count]
+        tier = lambda q: priority(pmap.get(q['id']), today)      # noqa: E731
+    chosen = pool[:count] if tier is None else spread(pool, count, rnd, tier)
     rnd.shuffle(chosen)
     return scope_name, chosen
 
@@ -869,6 +914,7 @@ def build_test():
         request.args.get('filter', 'all'), (request.args.get('search') or '')[:60])
     # دقيقة لكل سؤال، فالمدة تتبع الاختبار نفسه ولا تحتاج ضبطًا
     return jsonify(scope=scope_name, mode=mode, minutes=max(1, len(chosen)),
+                   laws=len({q['law'] for q in chosen}),
                    questions=[QB.public_view(q) for q in chosen])
 
 
@@ -957,13 +1003,16 @@ def stats():
     pmap = progress_map(u)
     base = user_stats(u, pmap)
 
+    # answered عدد الإجابات، وseen عدد الأسئلة المختلفة التي طُرقت. الثاني هو
+    # وحده الذي يقيس التغطية: من أجاب سؤالًا واحدًا عشر مرّات لم يغطِّ مادته.
     per = {n: {'law': n, 'title': QB.LAW_TITLES[n], 'total': 0, 'answered': 0,
-               'correct': 0, 'mastered': 0} for n in QB.LAWS}
+               'correct': 0, 'mastered': 0, 'seen': 0} for n in QB.LAWS}
     for q in QB.QUESTIONS:
         row = per[q['law']]
         row['total'] += 1
         p = pmap.get(q['id'])
         if was_seen(p):
+            row['seen'] += 1
             row['answered'] += p.seen_count or 0
             row['correct'] += p.correct_count or 0
             if p.mastered:
@@ -972,6 +1021,7 @@ def stats():
     for n in QB.LAWS:
         r = per[n]
         r['accuracy'] = round(r['correct'] / r['answered'] * 100, 1) if r['answered'] else 0.0
+        r['coverage'] = round(r['seen'] / r['total'] * 100, 1) if r['total'] else 0.0
         by_law.append(r)
 
     today = date.today()
@@ -1012,19 +1062,20 @@ def leaderboard():
     if err:
         return err
     mastered = db.func.sum(db.case((Progress.mastered == True, 1), else_=0))  # noqa: E712
-    rows = (db.session.query(User.id, User.username,
+    rows = (db.session.query(User.id, User.username, User.streak, User.last_active,
                              mastered.label('m'),
                              db.func.sum(Progress.seen_count).label('seen'),
                              db.func.sum(Progress.correct_count).label('ok'))
             .join(Progress, Progress.user_id == User.id)
             # لا استثناء: كل من أجاب عن سؤال يظهر في اللوحة
-            .group_by(User.id, User.username)
+            .group_by(User.id, User.username, User.streak, User.last_active)
             .order_by(db.text('m DESC'))
             .limit(25).all())
     items, my_row = [], None
     for r in rows:
         seen, ok, m = int(r.seen or 0), int(r.ok or 0), int(r.m or 0)
         entry = {'name': r.username, 'mastered': m,
+                 'streak': live_streak(r.streak, r.last_active),
                  'accuracy': round(ok / seen * 100, 1) if seen else 0.0,
                  'me': r.id == u.id}
         if entry['me']:
@@ -1032,6 +1083,7 @@ def leaderboard():
         items.append(entry)
     me_stats = user_stats(u)
     me_info = my_row or {'name': u.name, 'mastered': me_stats['mastered'],
+                         'streak': live_streak(u.streak, u.last_active),
                          'accuracy': me_stats['accuracy'], 'me': True}
     me_info['listed'] = my_row is not None
     me_info['rank'] = (items.index(my_row) + 1) if my_row else None
