@@ -37,12 +37,12 @@ jobs:
       BUILD_NUMBER: ${{ github.run_number }}
       RUN_ID: ${{ github.run_id }}
       PBXPROJ: ${{ github.workspace }}/mobile/ios/App/App.xcodeproj/project.pbxproj
-      WORK: ${{ runner.temp }}/signing
     steps:
       - uses: actions/checkout@v4
 
       - name: Check inputs
         run: |
+          echo "WORK=$RUNNER_TEMP/signing" >> "$GITHUB_ENV"
           [[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::رقم الإصدار يجب أن يكون مثل 1.0.0"; exit 1; }
           for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
             [ -n "${!v}" ] || { echo "::error::السرّ $v غير مضبوط في إعدادات المستودع"; exit 1; }
