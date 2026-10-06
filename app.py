@@ -21,6 +21,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import apns as AP
 import push as WP
 import questions as QB
 import ui
@@ -142,6 +143,16 @@ class PushSub(db.Model):
     endpoint_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
     p256dh = db.Column(db.String(140), nullable=False)
     auth = db.Column(db.String(40), nullable=False)
+    failures = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ApnsDevice(db.Model):
+    """جهاز آيفون مسجّل في إشعارات آبل عبر التطبيق. للمستخدم الواحد جهاز أو أكثر."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    token = db.Column(db.String(200), unique=True, nullable=False, index=True)
+    env = db.Column(db.String(12), default='production')   # البيئة التي قبلت الرمز آخر مرة
     failures = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -473,6 +484,23 @@ MAX_TRIES, WINDOW = 12, 300
 USER_TRIES, USER_WINDOW = 30, 900
 
 
+# تطبيق آيفون يضيف هذا الوسم إلى هويّة متصفّحه (appendUserAgent في إعداد Capacitor)
+APP_UA = 'LOTGApp/'
+# صفحات الكتاب قد تعترض عليها آبل لحقوق المحتوى. هذا المتغيّر يخفيها من
+# التطبيق وحده فورًا بلا نسخة جديدة، ويبقيها في الموقع.
+APP_HIDE_BOOK = os.environ.get('APP_HIDE_BOOK', '') == '1'
+# صفحة الانطلاق المحلية في التطبيق تسأل /health من هذا الأصل قبل فتح الموقع
+APP_ORIGIN = 'capacitor://localhost'
+
+
+def is_app():
+    return APP_UA in request.headers.get('User-Agent', '')
+
+
+def book_allowed():
+    return not (APP_HIDE_BOOK and is_app())
+
+
 def client_ip():
     fwd = request.headers.get('X-Forwarded-For', '')
     return (fwd.split(',')[0].strip() if fwd else (request.remote_addr or '?'))
@@ -505,6 +533,27 @@ def service_worker():
     r = Response(ui.SW_JS, mimetype='application/javascript; charset=utf-8')
     r.headers['Cache-Control'] = 'no-cache'
     return r
+
+
+# متجر آبل يشترط رابطًا لسياسة الخصوصية ورابطًا للدعم. البريد اختياري،
+# ويُضبط من البيئة حتى لا يُكتب عنوان شخصي في المستودع.
+CONTACT_EMAIL = os.environ.get('CONTACT_EMAIL', '').strip()
+
+
+def info_page(html):
+    r = Response(html, mimetype='text/html; charset=utf-8')
+    r.headers['Cache-Control'] = 'public, max-age=3600'
+    return r
+
+
+@app.get('/privacy')
+def privacy():
+    return info_page(ui.privacy_html(CONTACT_EMAIL))
+
+
+@app.get('/support')
+def support():
+    return info_page(ui.support_html(CONTACT_EMAIL))
 
 
 # صور الأيقونة جاهزة في جذر المستودع: أنظمة الجوال تعتمد على PNG أكثر من SVG،
@@ -573,6 +622,9 @@ def health():
     r = jsonify(status='ok', db=ok, questions=QB.TOTAL,
                 storage=STORAGE, persistent=STORAGE_PERSISTENT)
     r.headers['Cache-Control'] = 'no-store'
+    if request.headers.get('Origin') == APP_ORIGIN:
+        r.headers['Access-Control-Allow-Origin'] = APP_ORIGIN
+        r.headers['Vary'] = 'Origin'
     return r, 200
 
 
@@ -639,6 +691,7 @@ def me():
               'notify_hour': u.notify_hour if u.notify_hour is not None else 20,
               'notify_minute': u.notify_minute or 0},
         stats=user_stats(u),
+        book=book_allowed(),
         scopes=[QB.ALL_SCOPE] + QB.CATEGORIES,
         all_scope=QB.ALL_SCOPE,
     )
@@ -694,6 +747,8 @@ def delete_account():
     Progress.query.filter_by(user_id=u.id).delete()
     TestResult.query.filter_by(user_id=u.id).delete()
     Activity.query.filter_by(user_id=u.id).delete()
+    PushSub.query.filter_by(user_id=u.id).delete()
+    ApnsDevice.query.filter_by(user_id=u.id).delete()
     db.session.delete(u)
     db.session.commit()
     session.clear()
@@ -723,7 +778,7 @@ def book_page(n):
     u, err = need_user()
     if err:
         return err
-    if n not in BOOK_PAGES:      # لا تُخدم إلا الصفحات التي يشير إليها سؤال
+    if n not in BOOK_PAGES or not book_allowed():   # لا تُخدم إلا الصفحات التي يشير إليها سؤال
         return jsonify(error='صفحة غير متاحة.'), 404
     png = _page_cache.get(n)
     if png is None:
@@ -1100,6 +1155,17 @@ LATE_LIMIT = 120
 CRON_SECRET = os.environ.get('CRON_SECRET', '').strip()
 _vapid = {}
 
+# إشعارات آبل لتطبيق آيفون. المفتاح ‎.p8‎ ومعرّفه ومعرّف الفريق من حساب المطوّر.
+APNS_TOPIC = os.environ.get('APNS_TOPIC', '').strip() or 'com.saudalh.lotg'
+APNS = None
+if os.environ.get('APNS_KEY', '').strip():
+    try:
+        APNS = AP.Client(os.environ['APNS_KEY'], os.environ.get('APNS_KEY_ID', '').strip(),
+                         os.environ.get('APNS_TEAM_ID', '').strip(), APNS_TOPIC)
+    except Exception as _exc:
+        app.logger.error('مفتاح APNS_KEY غير صالح، إشعارات آيفون معطّلة: %s', _exc)
+APNS_TOKEN = re.compile(r'[0-9a-fA-F]{64,200}')
+
 
 def vapid_keys():
     """يرجّع (سرّي، معلن). يؤخذان من البيئة، وإلا يولَّدان مرة ويُحفظان في القاعدة."""
@@ -1135,11 +1201,17 @@ def local_now(u):
     return datetime.utcnow() + timedelta(minutes=u.tz_offset if u.tz_offset is not None else 180)
 
 
+def device_count(u):
+    return (PushSub.query.filter_by(user_id=u.id).count()
+            + ApnsDevice.query.filter_by(user_id=u.id).count())
+
+
 def send_to_user(u, data):
     """يرسل إلى كل أجهزة المستخدم ويحذف الاشتراكات الميتة. يرجّع عدد ما نجح."""
-    priv, pub = vapid_keys()
     sent = 0
-    for sub in PushSub.query.filter_by(user_id=u.id).all():
+    subs = PushSub.query.filter_by(user_id=u.id).all()
+    priv, pub = vapid_keys() if subs else (None, None)
+    for sub in subs:
         try:
             WP.send({'endpoint': sub.endpoint, 'p256dh': sub.p256dh, 'auth': sub.auth},
                     data, priv, pub, VAPID_SUBJECT)
@@ -1152,8 +1224,37 @@ def send_to_user(u, data):
             app.logger.warning('تعذّر إرسال إشعار: %s', exc)
             if sub.failures >= 5:      # خدمة الدفع ترفض هذا الاشتراك باستمرار
                 db.session.delete(sub)
+    for dev in ApnsDevice.query.filter_by(user_id=u.id).all():
+        if APNS is None:               # المفاتيح لم تُضبط بعد، فلا يُحاسَب الجهاز على ذلك
+            continue
+        try:
+            dev.env = APNS.send(dev.token, data, dev.env or 'production')
+            dev.failures = 0
+            sent += 1
+        except AP.Gone:
+            db.session.delete(dev)
+        except Exception as exc:
+            dev.failures = (dev.failures or 0) + 1
+            app.logger.warning('تعذّر إرسال إشعار آيفون: %s', exc)
+            if dev.failures >= 5:
+                db.session.delete(dev)
     db.session.commit()
     return sent
+
+
+def apply_notify_prefs(u, d):
+    """يفعّل الإشعار للمستخدم ويحفظ وقته وتوقيته، عند تسجيل أي جهاز."""
+    u.notify_on = True
+    if u.notified_on == date.today():
+        u.notified_on = None      # جهاز جديد اليوم يستحقّ إشعار اليوم
+    remember_tz(u, d.get('tz_offset'))
+    try:
+        if 'hour' in d and 0 <= int(d['hour']) <= 23:
+            u.notify_hour = int(d['hour'])
+        if 'minute' in d and 0 <= int(d['minute']) <= 59:
+            u.notify_minute = int(d['minute'])
+    except (TypeError, ValueError):
+        pass
 
 
 def daily_payload(u):
@@ -1188,19 +1289,51 @@ def push_subscribe():
         db.session.add(sub)
     sub.user_id = u.id            # الجهاز نفسه قد ينتقل إلى حساب آخر
     sub.p256dh, sub.auth, sub.failures = p256dh, auth, 0
-    u.notify_on = True
-    if u.notified_on == date.today():
-        u.notified_on = None      # جهاز جديد اليوم يستحقّ إشعار اليوم
-    remember_tz(u, d.get('tz_offset'))
-    try:
-        if 'hour' in d and 0 <= int(d['hour']) <= 23:
-            u.notify_hour = int(d['hour'])
-        if 'minute' in d and 0 <= int(d['minute']) <= 59:
-            u.notify_minute = int(d['minute'])
-    except (TypeError, ValueError):
-        pass
+    apply_notify_prefs(u, d)
     db.session.commit()
     return jsonify(ok=True, hour=u.notify_hour, minute=u.notify_minute or 0)
+
+
+@app.post('/api/push/apns')
+def push_apns():
+    """تطبيق آيفون يسجّل رمز جهازه من آبل."""
+    u, err = need_user()
+    if err:
+        return err
+    if APNS is None:
+        return jsonify(error='إشعارات آيفون غير مفعّلة على الخادم بعد.'), 503
+    d = request.get_json(silent=True) or {}
+    token = (d.get('token') or '').strip()
+    if not APNS_TOKEN.fullmatch(token):
+        return jsonify(error='رمز الجهاز غير صالح.'), 400
+    token = token.lower()
+    dev = ApnsDevice.query.filter_by(token=token).first()
+    if dev is None:
+        dev = ApnsDevice(token=token, user_id=u.id, env='production')
+        db.session.add(dev)
+    dev.user_id = u.id            # الجهاز نفسه قد ينتقل إلى حساب آخر
+    dev.failures = 0
+    apply_notify_prefs(u, d)
+    db.session.commit()
+    return jsonify(ok=True, hour=u.notify_hour, minute=u.notify_minute or 0)
+
+
+@app.post('/api/push/apns/remove')
+def push_apns_remove():
+    u, err = need_user()
+    if err:
+        return err
+    token = ((request.get_json(silent=True) or {}).get('token') or '').strip().lower()
+    q = ApnsDevice.query.filter_by(user_id=u.id)
+    if token:
+        q = q.filter_by(token=token)
+    for dev in q.all():
+        db.session.delete(dev)
+    db.session.flush()
+    if not device_count(u):
+        u.notify_on = False
+    db.session.commit()
+    return jsonify(ok=True)
 
 
 @app.post('/api/push/unsubscribe')
@@ -1214,7 +1347,8 @@ def push_unsubscribe():
         q = q.filter_by(endpoint_hash=hashlib.sha256(endpoint.encode()).hexdigest())
     for sub in q.all():
         db.session.delete(sub)
-    if not PushSub.query.filter_by(user_id=u.id).count():
+    db.session.flush()
+    if not device_count(u):
         u.notify_on = False
     db.session.commit()
     return jsonify(ok=True)
@@ -1227,7 +1361,7 @@ def push_test():
         return err
     if rate_limited('push-test:%s' % u.id):
         return jsonify(error='انتظر قليلًا قبل إرسال تجربة أخرى.'), 429
-    if not PushSub.query.filter_by(user_id=u.id).count():
+    if not device_count(u):
         return jsonify(error='لا يوجد جهاز مشترك في الإشعارات.'), 400
     sent = send_to_user(u, {'title': 'تجربة ناجحة',
                             'body': 'هكذا سيصلك تذكير سؤال اليوم.',
@@ -1269,7 +1403,7 @@ def push_dispatch():
             u.notified_on = today
             sent += 1
         else:
-            u.notify_on = bool(PushSub.query.filter_by(user_id=u.id).count())
+            u.notify_on = bool(device_count(u))
     db.session.commit()
     return jsonify(ok=True, sent=sent, skipped=skipped, considered=len(users))
 

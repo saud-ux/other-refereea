@@ -1,0 +1,37 @@
+{
+  "appId": "com.saudalh.lotg",
+  "appName": "قوانين اللعبة",
+  "webDir": "www",
+  "server": {
+    "allowNavigation": [
+      "other-refereea.onrender.com"
+    ],
+    "errorPath": "index.html"
+  },
+  "ios": {
+    "scheme": "App",
+    "appendUserAgent": "LOTGApp/1",
+    "contentInset": "never",
+    "backgroundColor": "#071410",
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 400,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 200,
+      "backgroundColor": "#071410",
+      "showSpinner": false
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "alert",
+        "sound"
+      ]
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "overlaysWebView": true
+    }
+  }
+}

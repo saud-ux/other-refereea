@@ -5,4 +5,5 @@ SQLAlchemy==2.0.44
 Werkzeug==3.0.4
 cryptography==46.0.7
 gunicorn==23.0.0
+httpx[http2]==0.28.1
 psycopg[binary]==3.2.13

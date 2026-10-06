@@ -1,0 +1,106 @@
+# بناء تطبيق آيفون ورفعه إلى TestFlight، بلا جهاز ماك.
+# يُشغَّل يدويًا: Actions ← iOS TestFlight ← Run workflow.
+#
+# الأسرار المطلوبة (Settings ← Secrets and variables ← Actions):
+#   APPLE_TEAM_ID   معرّف الفريق من بوّابة المطوّر (عشرة أحرف)
+#   ASC_KEY_ID      معرّف مفتاح واجهة App Store Connect
+#   ASC_ISSUER_ID   معرّف المُصدِر (Issuer ID) من صفحة المفاتيح نفسها
+#   ASC_KEY_P8      محتوى ملف المفتاح ‎.p8‎ كاملًا. دور المفتاح Admin
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "رقم الإصدار الظاهر في المتجر، مثل 1.0.0"
+        required: true
+        default: "1.0.0"
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      BUNDLE_ID: com.saudalh.lotg
+      APP_VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ github.run_number }}
+      RUN_ID: ${{ github.run_id }}
+      PBXPROJ: ${{ github.workspace }}/mobile/ios/App/App.xcodeproj/project.pbxproj
+      WORK: ${{ runner.temp }}/signing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check inputs
+        run: |
+          [[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::رقم الإصدار يجب أن يكون مثل 1.0.0"; exit 1; }
+          for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::السرّ $v غير مضبوط في إعدادات المستودع"; exit 1; }
+          done
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install tools
+        run: |
+          npm ci --prefix mobile
+          pip install cryptography==46.0.7
+
+      - name: Sync web assets and plugins
+        working-directory: mobile
+        run: npx cap sync ios
+
+      - name: Signing (temporary certificate and profile)
+        run: python mobile/ci/signing.py prepare "$WORK"
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project mobile/ios/App/App.xcodeproj \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$WORK/App.xcarchive" \
+            | tee "$WORK/archive.log" | grep -E "error:|warning: .*sign|\*\* ARCHIVE" || true
+          test -d "$WORK/App.xcarchive" || { tail -80 "$WORK/archive.log"; exit 1; }
+
+      - name: Upload to TestFlight
+        run: |
+          set -o pipefail
+          printf '%s' "$ASC_KEY_P8" > "$WORK/AuthKey.p8"
+          xcodebuild -exportArchive \
+            -archivePath "$WORK/App.xcarchive" \
+            -exportOptionsPlist "$WORK/ExportOptions.plist" \
+            -exportPath "$WORK/export" \
+            -authenticationKeyPath "$WORK/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "### رُفع الإصدار $APP_VERSION (بناء $BUILD_NUMBER) إلى TestFlight" >> "$GITHUB_STEP_SUMMARY"
+          echo "يظهر في App Store Connect بعد المعالجة، عادةً خلال ربع ساعة." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Revoke temporary certificate
+        if: always()
+        run: |
+          rm -f "$WORK/AuthKey.p8"
+          python mobile/ci/signing.py cleanup "$WORK"

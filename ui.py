@@ -49,7 +49,8 @@ a{color:inherit}
 .ic{width:1.25em;height:1.25em;flex:none;vertical-align:-.25em}
 
 /* ══════════════ الدخول ══════════════ */
-.authwrap{min-height:100dvh;display:grid;place-items:center;padding:24px 16px}
+.authwrap{min-height:100dvh;display:grid;place-items:center;
+  padding:calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
 .authcard{width:100%;max-width:430px;background:var(--surface);border:1px solid var(--line);
   border-radius:var(--r-lg);padding:30px 26px;box-shadow:var(--shadow)}
 .authcard .logo{justify-content:center;padding:0 0 18px}
@@ -120,6 +121,8 @@ input[type=number]{-moz-appearance:textfield}
 .userchip b{font-size:13.5px;display:block}
 .userchip small{display:flex;flex-wrap:wrap;gap:2px 10px;color:var(--muted);font-size:11px}
 .content{min-width:0;display:flex;flex-direction:column}
+/* في التطبيق تمتدّ الصفحة تحت شريط الحالة، فيُترك له مكانه. وفي المتصفّح القيمة صفر */
+.content{padding-top:env(safe-area-inset-top)}
 main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 /* تباعد واحد بين كل عنصرين في الصفحة، فلا تتفاوت الفراغات بحسب العنصر */
 #view > * + *{margin-top:15px}
@@ -343,6 +346,9 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
   .avabtn{display:grid}
 }
 @media(max-width:380px){ .tiles{grid-template-columns:1fr} }
+/* داخل التطبيق: لا قائمة نسخ عند الضغط المطوّل على الأزرار، ولا ارتداد يكشف ما خلف الصفحة */
+.native body{overscroll-behavior-y:none}
+.native button,.native .tabbar,.native .strip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 '''
 
@@ -445,6 +451,7 @@ const IC={
  spark:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
  whistle:'<circle cx="8.5" cy="13.5" r="5.5"/><path d="M14 11h7l-1.5 3H14M8.5 13.5h0"/>',
  download:'<path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16"/>',
+ share:'<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
  bell:'<path d="M18 8.5a6 6 0 1 0-12 0c0 5.2-2 6.5-2 6.5h16s-2-1.3-2-6.5z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/>',
  grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/>'
       +'<rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>'
@@ -513,6 +520,35 @@ function confirmBox(title,sub,okLabel,danger){
   });
 }
 
+/* ══════════════════ داخل تطبيق آيفون ══════════════════ */
+/* التطبيق يفتح هذه الصفحة نفسها، ويحقن فيها جسر Capacitor. فما يلي لا يعمل
+   إلا هناك، وفي المتصفّح يمرّ بلا أثر. الإضافات تُستدعى بأسمائها من الجسر
+   مباشرةً، إذ لا حزم مجمّعة في هذه الصفحة. */
+const NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+const Plug=n=>{
+  if(!NATIVE||!Capacitor.isPluginAvailable(n)) return null;
+  return Capacitor.Plugins[n]||Capacitor.registerPlugin(n);
+};
+const Native={
+  tap(){ const h=Plug("Haptics"); if(h) h.impact({style:"LIGHT"}).catch(()=>{}); },
+  result(ok){ const h=Plug("Haptics"); if(h) h.notification({type:ok?"SUCCESS":"ERROR"}).catch(()=>{}); },
+  // DARK يعني نصًّا فاتحًا للخلفية الداكنة
+  statusBar(dark){ const b=Plug("StatusBar"); if(b) b.setStyle({style:dark?"DARK":"LIGHT"}).catch(()=>{}); },
+  get canShare(){ return !!Plug("Share")||!!navigator.share; },
+  async share(text){
+    const url=location.origin+"/";
+    const b=Plug("Share");
+    try{
+      if(b) await b.share({title:"قوانين اللعبة",text,url});
+      else if(navigator.share) await navigator.share({title:"قوانين اللعبة",text,url});
+    }catch(e){}   // إغلاق نافذة المشاركة ليس خطأً
+  }
+};
+const store={
+  get(k){ try{return localStorage.getItem(k);}catch(e){return null;} },
+  set(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v); }catch(e){} }
+};
+
 /* ══════════════════ المظهر ══════════════════ */
 const Theme={
   get(){ try{return localStorage.getItem("theme")||"auto";}catch(e){return "auto";} },
@@ -522,6 +558,7 @@ const Theme={
     document.documentElement.dataset.theme=dark?"dark":"light";
     const m=document.querySelector("meta[name=theme-color]");
     if(m) m.content=dark?"#071410":"#f1f6f2";
+    Native.statusBar(dark);
     return dark;
   },
   toggle(){
@@ -655,6 +692,7 @@ function setSideMeta(st){
 async function refreshMe(){ try{ S.me=await api("/api/me"); }catch(e){} }
 async function logout(){
   if(!await confirmBox("تسجيل الخروج","سيبقى تقدّمك محفوظًا في حسابك.","خروج")) return;
+  await Push.forget();
   try{ await api("/api/logout",{body:{}}); }catch(e){}
   location.reload();
 }
@@ -676,7 +714,7 @@ function optsHTML(q,handler,state,sel){
 /* صورة الصفحة تُحمّل عند الطلب فقط، فلا تُستهلك بيانات من لا يريدها */
 let _shotN=0;
 function pageShot(p){
-  if(!p) return "";
+  if(!p||S.me.book===false) return "";
   const id="shot"+(++_shotN);
   return `<div class="pageshot" id="${id}">
     <button class="btn ghost block sm" onclick="Shot.show('${id}',${p})">${ic("book")} صورة صفحة ${num(p)} من الكتاب</button>
@@ -831,6 +869,7 @@ async function answerDaily(i){
   try{
     const d=await api("/api/answer",{body:{qid:q.id,choice:i,mode:"daily"}});
     S.dailyResult=Object.assign({},d,{your_index:i});
+    Native.result(d.correct);
     $("#dailyCard").querySelector(".opts").outerHTML=optsHTML(q,null,{correct:d.correct_index,picked:i});
     $("#dFeed").innerHTML=explainHTML(d,d.correct)+
       `<p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p>`;
@@ -990,6 +1029,7 @@ const Test={
     const cur=S.answers[S.tIdx];
     // اختيار الإجابة نفسها مرة أخرى يلغيها، فيمكن ترك السؤال بلا جواب
     S.answers[S.tIdx]=(cur&&cur.choice===i)?null:{qid:S.test.questions[S.tIdx].id,choice:i};
+    Native.tap();
     R.render();
   },
   prev(){ if(S.tIdx>0){ S.tIdx--; R.render(); } },
@@ -1010,7 +1050,8 @@ const Test={
     S.test=null; stopTimer();
     try{
       const d=await api("/api/test/submit",{body:payload});
-      d.asked=total; S.result=d; await refreshMe(); S.stats=null; R.render();
+      d.asked=total; S.result=d; Native.result(d.total&&d.score/d.total>=.5);
+      await refreshMe(); S.stats=null; R.render();
     }catch(e){ toast(e.error||"تعذّر إرسال النتيجة","bad"); R.render(); }
   },
   /* من بطاقة التغطية: يثبّت المادة في الإعداد ثم يبدأ فورًا */
@@ -1053,6 +1094,11 @@ function renderTestRun(){
   </div>`);
   tick();
 }
+function shareResult(){
+  const d=S.result; if(!d) return;
+  const scope=d.scope&&d.scope!==S.me.all_scope?` في ${d.scope}`:"";
+  Native.share(`حصلت على ${num(d.score)} من ${num(d.asked||d.total)} في اختبار قوانين اللعبة${scope}.`);
+}
 function renderResult(){
   const d=S.result, wrong=d.details.filter(x=>!x.correct), pctv=d.total?d.score/d.total*100:0;
   const mood=pctv>=90?["نتيجة ممتازة"]:pctv>=70?["نتيجة جيدة"]:pctv>=50?["نتيجة متوسطة"]:["تحتاج مراجعة"];
@@ -1062,6 +1108,7 @@ function renderResult(){
     ${d.scope?`<div class="badge dim" style="margin-bottom:14px">${esc(d.scope)}</div>`:""}
     <div class="btnrow" style="justify-content:center;margin-top:6px">
       <button class="btn primary" onclick="S.result=null;Test.start()">${ic("refresh")} اختبار جديد</button>
+      ${Native.canShare?`<button class="btn soft" onclick="shareResult()">${ic("share")} مشاركة</button>`:""}
       <button class="btn soft" onclick="Test.close()">العودة</button></div>
   </div>`);
   if(wrong.length){
@@ -1236,7 +1283,9 @@ function notifyBody(){
   const st=Push.state;
   if(st==="needs-install") return `<p class="hint">${ic("home")} على الآيفون تصل الإشعارات فقط بعد إضافة الموقع إلى الشاشة الرئيسية. افتح قائمة المشاركة ثم «إضافة إلى الشاشة الرئيسية»، وافتح الموقع من الأيقونة الجديدة وعُد إلى هنا.</p>`;
   if(st==="unsupported") return `<p class="hint">${ic("close")} هذا المتصفّح لا يدعم الإشعارات. جرّب كروم على أندرويد أو سفاري على آيفون بعد إضافة الموقع إلى الشاشة الرئيسية.</p>`;
-  if(st==="blocked") return `<p class="hint">${ic("close")} الإشعارات محظورة لهذا الموقع في إعدادات المتصفّح. اسمح بها من إعدادات الموقع ثم عُد إلى هنا.</p>`;
+  if(st==="blocked") return NATIVE
+    ?`<p class="hint">${ic("close")} الإشعارات مطفأة لهذا التطبيق. فعّلها من الإعدادات ← الإشعارات ← قوانين اللعبة، ثم عُد إلى هنا.</p>`
+    :`<p class="hint">${ic("close")} الإشعارات محظورة لهذا الموقع في إعدادات المتصفّح. اسمح بها من إعدادات الموقع ثم عُد إلى هنا.</p>`;
   if(st==="off") return `<button class="btn primary block" onclick="Acc.notifyOn()">${ic("bell")} فعّل الإشعار اليومي</button>`;
   const u=S.me.user;
   return `<div class="field"><label for="acTime">وقت التذكير</label>
@@ -1283,6 +1332,7 @@ const Acc={
     if(!pin) return toast("أدخل كلمة المرور أولًا","bad");
     if(!await confirmBox("حذف الحساب","سيُحذف حسابك وكل تقدّمك نهائيًا ولا يمكن استرجاعه.","احذف نهائيًا",true)) return;
     try{ await api("/api/account/delete",{method:"POST",body:{pin}});
+      store.set("apnsToken",null);
       toast("تم حذف الحساب"); setTimeout(()=>location.reload(),900); }
     catch(e){ toast(e.error||"تعذّر الحذف","bad"); }
   }
@@ -1292,19 +1342,29 @@ const Acc={
 /* ══════════════════ الإشعار اليومي ══════════════════ */
 const Push={
   reg:null, sub:null, ready:false,
-  get supported(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; },
+  perm:"prompt", token:null,          // في التطبيق: إذن الإشعارات ورمز الجهاز من آبل
+  get supported(){
+    if(NATIVE) return !!Plug("PushNotifications");
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  },
   // على آيفون لا تعمل الإشعارات إلا بعد إضافة الموقع إلى الشاشة الرئيسية
   get iosNeedsInstall(){
+    if(NATIVE) return false;
     const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||
       (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
     return ios && !window.matchMedia("(display-mode: standalone)").matches && !navigator.standalone;
   },
   get state(){
     if(!this.supported) return this.iosNeedsInstall?"needs-install":"unsupported";
+    if(NATIVE){
+      if(this.perm==="denied") return "blocked";
+      return this.token&&S.me&&S.me.user.notify_on?"on":"off";
+    }
     if(Notification.permission==="denied") return "blocked";
     return this.sub?"on":"off";
   },
   async init(){
+    if(NATIVE) return this.initNative();
     if(!this.supported||!("serviceWorker" in navigator)) { this.ready=true; return; }
     try{
       this.reg=await navigator.serviceWorker.ready;
@@ -1313,6 +1373,42 @@ const Push={
     this.ready=true;
     // اشتراك محفوظ على الجهاز لكن الحساب يظنّ الإشعارات مطفأة: نعيد تسجيله
     if(this.sub&&S.me&&!S.me.user.notify_on){ try{ await this.save(); }catch(e){} }
+  },
+  async initNative(){
+    const PN=Plug("PushNotifications");
+    if(PN){
+      try{ this.perm=(await PN.checkPermissions()).receive; }catch(e){}
+      this.token=store.get("apnsToken");
+    }
+    this.ready=true;
+    if(!PN||this.perm!=="granted"||!this.token) return;
+    // الرمز قد يتغيّر بعد تحديث النظام أو استعادة نسخة احتياطية، فيُجدَّد بصمت
+    try{
+      const t=await this.register();
+      if(t!==this.token||(S.me&&!S.me.user.notify_on)){ this.token=t; await this.saveNative(); }
+    }catch(e){}
+  },
+  /* register في الإضافة لا يرجّع الرمز، وإنما يصل في حدث منفصل */
+  register(){
+    const PN=Plug("PushNotifications");
+    return new Promise((res,rej)=>{
+      let done=false;
+      const hs=[];
+      const fin=(f,v)=>{ if(done) return; done=true;
+        hs.forEach(h=>Promise.resolve(h).then(x=>x&&x.remove()).catch(()=>{})); f(v); };
+      hs.push(PN.addListener("registration",t=>fin(res,t.value)));
+      hs.push(PN.addListener("registrationError",()=>fin(rej,{error:"تعذّر التسجيل في إشعارات آبل. حاول مرة أخرى."})));
+      setTimeout(()=>fin(rej,{error:"لم يصل ردّ من آبل. تحقّق من الإنترنت وحاول مرة أخرى."}),20000);
+      Promise.all(hs).then(()=>PN.register()).catch(()=>fin(rej,{error:"تعذّر التسجيل في الإشعارات."}));
+    });
+  },
+  async saveNative(){
+    await api("/api/push/apns",{body:{
+      token:this.token, tz_offset:tzOffset(),
+      hour:S.me?S.me.user.notify_hour:20,
+      minute:S.me?(S.me.user.notify_minute||0):0}});
+    store.set("apnsToken",this.token);
+    if(S.me) S.me.user.notify_on=true;
   },
   async save(){
     const j=this.sub.toJSON();
@@ -1323,6 +1419,16 @@ const Push={
     if(S.me) S.me.user.notify_on=true;
   },
   async enable(){
+    if(NATIVE){
+      const PN=Plug("PushNotifications");
+      if(!PN) throw {error:"هذه النسخة من التطبيق لا تدعم الإشعارات."};
+      let p=(await PN.checkPermissions()).receive;
+      if(p!=="granted"&&p!=="denied") p=(await PN.requestPermissions()).receive;
+      this.perm=p;
+      if(p!=="granted") throw {error:"لم يُسمح بالإشعارات. فعّلها من الإعدادات ← الإشعارات ← قوانين اللعبة."};
+      this.token=await this.register();
+      return this.saveNative();
+    }
     if(this.state==="needs-install")
       throw {error:"أضف الموقع إلى الشاشة الرئيسية أولًا، ثم افتحه من هناك وفعّل الإشعارات."};
     if(!this.supported) throw {error:"هذا المتصفّح لا يدعم الإشعارات."};
@@ -1336,11 +1442,26 @@ const Push={
     await this.save();
   },
   async disable(){
+    if(NATIVE){
+      const t=this.token;
+      this.token=null; store.set("apnsToken",null);
+      try{ await Plug("PushNotifications").unregister(); }catch(e){}
+      await api("/api/push/apns/remove",{body:{token:t||""}});
+      if(S.me) S.me.user.notify_on=false;
+      return;
+    }
     try{ if(this.sub) await this.sub.unsubscribe(); }catch(e){}
     const ep=this.sub?this.sub.toJSON().endpoint:"";
     this.sub=null;
     await api("/api/push/unsubscribe",{body:{endpoint:ep}});
     if(S.me) S.me.user.notify_on=false;
+  },
+  /* الجهاز يُفصل عن الحساب عند الخروج، فلا تصل تذكيرات صاحبه إلى من يدخل بعده */
+  async forget(){
+    if(!NATIVE||!this.token) return;
+    const t=this.token;
+    this.token=null; store.set("apnsToken",null);
+    try{ await api("/api/push/apns/remove",{body:{token:t}}); }catch(e){}
   }
 };
 const tzOffset=()=>-new Date().getTimezoneOffset();
@@ -1352,9 +1473,21 @@ function urlB64(s){
 /* سفاري على آيفون يتجاهل user-scalable، فيُمنع القرص بإيماءاته الخاصة */
 ["gesturestart","gesturechange","gestureend"].forEach(t=>
   addEventListener(t,e=>e.preventDefault(),{passive:false}));
-if("serviceWorker" in navigator){
+/* عامل الخدمة للموقع وحده. داخل التطبيق لا يعمل أصلًا، والإشعارات من آبل */
+if("serviceWorker" in navigator&&!NATIVE){
   addEventListener("load",()=>navigator.serviceWorker.register("/sw.js")
     .then(()=>Push.init()).catch(()=>{}));
+}
+if(NATIVE){
+  document.documentElement.classList.add("native");
+  // العودة من إعدادات آيفون قد تغيّر إذن الإشعارات، فتُقرأ الحالة من جديد
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible"&&S.me&&S.view==="account")
+      Push.init().then(()=>{ if(S.view==="account") R.render(); });
+  });
+  // لمس التذكير يفتح الرئيسية حيث سؤال اليوم
+  const PN=Plug("PushNotifications");
+  if(PN) PN.addListener("pushNotificationActionPerformed",()=>{ if(S.me&&!S.test) R.go("home"); });
 }
 boot();
 '''
@@ -1447,3 +1580,105 @@ INDEX_HTML = (HTML.replace('__CSS__', CSS)
               .replace('__JS__', JS.replace('__MARK__', json.dumps(MARK_SVG, ensure_ascii=False)))
               .replace('__ICON__', ICON_URL)
               .replace('__APPLE__', APPLE_URL))
+
+
+# ─────────────────────────────── صفحتا الخصوصية والدعم
+# يشترطهما متجر آبل برابطين علنيين. صفحتان ثابتتان خفيفتان بلا سكربت،
+# تُقرآن داخل التطبيق ومن المتصفّح على السواء.
+INFO_CSS = r'''
+*,*::before,*::after{box-sizing:border-box}
+:root{--bg:#f1f6f2;--surface:#fff;--line:#dbe7de;--text:#0d1f14;--muted:#5c7566;--brand:#15803d}
+@media(prefers-color-scheme:dark){:root{--bg:#071410;--surface:#0f2318;--line:#1e4230;
+  --text:#eaf5ee;--muted:#8fae9c;--brand:#a3e635}}
+body{margin:0;background:var(--bg);color:var(--text);line-height:1.9;font-size:15.5px;
+  font-family:"IBM Plex Sans Arabic",-apple-system,system-ui,"Segoe UI",Tahoma,sans-serif;
+  padding:calc(20px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:18px;padding:26px 22px}
+h1{font-size:23px;margin:0 0 4px}
+h2{font-size:17px;margin:24px 0 6px}
+p,ul{margin:0 0 8px}
+ul{padding-inline-start:22px}
+.sub{color:var(--muted);font-size:13.5px}
+a{color:var(--brand)}
+'''
+
+
+def _info_doc(title, body):
+    return ('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            '<title>%s — قوانين اللعبة</title><link rel="icon" href="%s" type="image/svg+xml">'
+            '<style>%s</style></head><body><main>%s'
+            '<p class="sub" style="margin-top:24px"><a href="/">العودة إلى التطبيق</a></p>'
+            '</main></body></html>') % (title, ICON_URL, INFO_CSS, body)
+
+
+def _contact(email):
+    if email:
+        return 'راسلنا على <a href="mailto:%s" dir="ltr">%s</a>.' % (email, email)
+    return 'تواصل معنا عبر صفحة التطبيق في آب ستور.'
+
+
+def privacy_html(email=''):
+    return _info_doc('سياسة الخصوصية', '''
+<h1>سياسة الخصوصية</h1>
+<p class="sub">قوانين اللعبة — منصّة إعداد الحكّام</p>
+
+<h2>ما نجمعه</h2>
+<ul>
+  <li><b>اسم المستخدم وكلمة المرور.</b> كلمة المرور تُحفظ مجزّأة (hash) ولا يمكن لأحد قراءتها.</li>
+  <li><b>تقدّمك في التدريب:</b> إجاباتك، ونتائج اختباراتك، والأسئلة المحفوظة في المفضلة، وأيام نشاطك.</li>
+  <li><b>إعداد التذكير:</b> الوقت الذي تختاره وفرق توقيتك، ورمز الإشعارات لجهازك إن فعّلتها.</li>
+</ul>
+<p>لا نطلب بريدًا ولا رقم جوال ولا اسمًا حقيقيًا، ولا نجمع موقعك ولا جهات اتصالك ولا صورك.</p>
+
+<h2>كيف نستخدمه</h2>
+<p>لتشغيل التطبيق فقط: حفظ تقدّمك، واختيار أسئلة المراجعة، وحساب إحصائياتك، وإرسال التذكير اليومي إن طلبته.
+لا إعلانات في التطبيق، ولا تتبّع عبر التطبيقات والمواقع الأخرى، ولا نبيع بياناتك ولا نشاركها مع أحد.</p>
+
+<h2>ما يراه الآخرون</h2>
+<p>لوحة الترتيب تعرض لكل مستخدم: اسم المستخدم، وعدد الأسئلة المتقنة، ودقّة الإجابات، وسلسلة الأيام.
+لذلك اختر اسم مستخدم لا يكشف ما لا تريد كشفه.</p>
+
+<h2>مزوّدو الخدمة</h2>
+<p>الخادم وقاعدة البيانات مستضافان لدى مزوّد استضافة سحابية. والخطوط تُحمَّل من خدمة خطوط قوقل،
+فيصلها عنوان جهازك عند تحميلها كما يحدث في أي موقع. وإشعارات آيفون تمرّ عبر خدمة الإشعارات من آبل.</p>
+
+<h2>حذف بياناتك</h2>
+<p>من صفحة «الحساب» داخل التطبيق اختر «حذف الحساب نهائيًا». يُحذف حسابك وكل تقدّمك ورموز الإشعارات فورًا ولا يمكن استرجاعها.</p>
+
+<h2>الأطفال</h2>
+<p>التطبيق موجّه لحكّام كرة القدم والمهتمّين بالقانون، وليس موجّهًا للأطفال.</p>
+
+<h2>التواصل</h2>
+<p>%s</p>
+''' % _contact(email))
+
+
+def support_html(email=''):
+    return _info_doc('الدعم', '''
+<h1>الدعم</h1>
+<p class="sub">قوانين اللعبة — منصّة إعداد الحكّام</p>
+
+<h2>نسيت كلمة المرور</h2>
+<p>الحساب لا يرتبط ببريد، فلا يمكن استرجاع كلمة المرور. أنشئ حسابًا جديدًا باسم مستخدم آخر،
+وإن كنت تذكرها فغيّرها من صفحة «الحساب».</p>
+
+<h2>لا يصلني التذكير اليومي</h2>
+<ul>
+  <li>فعّله من صفحة «الحساب» واسمح بالإشعارات عندما يطلبها الجهاز.</li>
+  <li>على آيفون: الإعدادات ← الإشعارات ← قوانين اللعبة، وتأكّد أن «السماح بالإشعارات» مفعّل.</li>
+  <li>التذكير لا يُرسَل في يوم حللت فيه سؤال اليوم.</li>
+</ul>
+
+<h2>التطبيق يتأخّر عند فتحه</h2>
+<p>إن مرّ وقت طويل دون استخدام، يحتاج الخادم أحيانًا إلى دقيقة ليستيقظ. انتظر حتى تختفي شاشة الانتظار.</p>
+
+<h2>حذف الحساب</h2>
+<p>من صفحة «الحساب» ← «حذف الحساب نهائيًا». يُحذف كل شيء فورًا.</p>
+
+<h2>تواصل معنا</h2>
+<p>%s</p>
+
+<p class="sub" style="margin-top:20px"><a href="/privacy">سياسة الخصوصية</a></p>
+''' % _contact(email))

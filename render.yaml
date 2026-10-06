@@ -24,3 +24,18 @@ services:
       # عند كل إعادة تشغيل أو نشر، فتضيع الحسابات والتقدّم.
       - key: DATABASE_URL
         sync: false
+      # إشعارات تطبيق آيفون عبر آبل. المفتاح من بوّابة المطوّر:
+      # Certificates, Identifiers & Profiles ← Keys ← Apple Push Notifications service.
+      # APNS_KEY محتوى ملف ‎.p8‎ كاملًا، و APNS_KEY_ID معرّفه، و APNS_TEAM_ID معرّف الفريق.
+      - key: APNS_KEY
+        sync: false
+      - key: APNS_KEY_ID
+        sync: false
+      - key: APNS_TEAM_ID
+        sync: false
+      # 1 يخفي صور صفحات الكتاب من تطبيق آيفون وحده فورًا، إن اعترضت آبل على المحتوى
+      - key: APP_HIDE_BOOK
+        value: "0"
+      # بريد التواصل في صفحتي /privacy و /support اللتين يشترطهما المتجر
+      - key: CONTACT_EMAIL
+        sync: false
