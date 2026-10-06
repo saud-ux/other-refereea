@@ -78,7 +78,7 @@ input[type=number]{-moz-appearance:textfield}
 .btn{border:0;border-radius:var(--r-sm);padding:12px 18px;font-weight:700;font-size:14.5px;
   cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;
   transition:transform .08s, filter .15s; white-space:nowrap}
-.btn:active{transform:translateY(1px)}
+.btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
 .btn.primary{background:var(--btn-grad);color:var(--btn-ink);box-shadow:0 8px 22px #16a34a3d}
@@ -273,7 +273,7 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 .empty .big{font-size:34px;display:block;margin-bottom:8px}
 .timer{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--brand)}
 :root[data-theme="dark"] .timer{color:var(--brand-2)}
-.timer.warn{color:var(--hot)}
+.timer.warn{color:var(--hot);animation:beat 1s ease-in-out infinite}
 .prog{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line-soft)}
 .prog i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));border-radius:999px;transition:width .3s}
 .score{font-size:52px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
@@ -349,6 +349,45 @@ main{padding:0 26px 40px;max-width:1120px;width:100%;margin-inline:auto;flex:1}
 /* داخل التطبيق: لا قائمة نسخ عند الضغط المطوّل على الأزرار، ولا ارتداد يكشف ما خلف الصفحة */
 .native body{overscroll-behavior-y:none}
 .native button,.native .tabbar,.native .strip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+/* ══════════════ الحركة ══════════════ */
+/* كل حركة مربوطة بلحظة بعينها، لا بكل إعادة رسم: R.render يأخذ اسم الحركة
+   صراحةً، فاختيار إجابة أو تبديل خيار لا يعيد دخول الصفحة كلها */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+@keyframes fadeIn{from{opacity:0}}
+@keyframes zoomIn{from{opacity:0;transform:scale(.94)}}
+@keyframes drop{from{opacity:0;transform:translateY(-6px)}}
+/* الصفحة من اليمين إلى اليسار: التالي يدخل من اليسار حيث زرّه، والسابق من اليمين */
+@keyframes fromLeft{from{opacity:0;transform:translateX(-28px)}}
+@keyframes fromRight{from{opacity:0;transform:translateX(28px)}}
+@keyframes grow{from{transform:scaleX(0)}}
+@keyframes bump{40%{transform:scale(1.03)}}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+@keyframes glow{from{box-shadow:0 0 0 0 var(--ok)}to{box-shadow:0 0 0 12px transparent}}
+@keyframes tabPop{50%{transform:scale(1.2)}}
+@keyframes beat{50%{transform:scale(1.06)}}
+
+/* دخول صفحة: البطاقات تصعد متتابعةً، والأشرطة تمتلئ من بدايتها */
+#view.enter > *{animation:rise .38s cubic-bezier(.2,.7,.2,1) both;
+  animation-delay:calc(min(var(--i,0),6) * 45ms)}
+#view.enter .bar i,#view.enter .prog i{animation:grow .8s cubic-bezier(.2,.7,.2,1) both;transform-origin:right}
+#view.q-next .qcard{animation:fromLeft .28s cubic-bezier(.2,.7,.2,1) both}
+#view.q-prev .qcard{animation:fromRight .28s cubic-bezier(.2,.7,.2,1) both}
+.tabbar.pop button.on .ic{animation:tabPop .35s ease}
+
+.opt{transition:border-color .12s,background .12s,box-shadow .12s,transform .08s}
+.opt:active:not(:disabled){transform:scale(.985)}
+.opt.bump{animation:bump .25s ease}
+.opts.reveal .opt.right{animation:glow .7s ease-out}
+.opts.reveal .opt.wrong{animation:shake .4s ease}
+.explain.drop,.det.drop{animation:drop .3s ease both}
+.chip{transition:background .15s,border-color .15s,color .15s,transform .08s}
+.chip:active{transform:scale(.95)}
+.fresh{animation:fadeIn .3s ease}
+.score{animation:zoomIn .45s cubic-bezier(.2,.8,.2,1.15) both}
+.authcard{animation:zoomIn .4s cubic-bezier(.2,.7,.2,1) both}
+.modal{animation:fadeIn .18s ease}
+.modal .box{animation:zoomIn .24s cubic-bezier(.2,.8,.2,1.1)}
+.viewer{animation:fadeIn .2s ease}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 '''
 
@@ -593,7 +632,7 @@ const R={
       if(!ok) return;
       stopTimer(); S.test=null;
     }
-    S.view=k; window.scrollTo(0,0); this.render();
+    S.view=k; window.scrollTo(0,0); this.render("enter");
   },
   paintNav(){
     $("#nav").innerHTML=PAGES.map(p=>{
@@ -605,13 +644,20 @@ const R={
       return `<button class="${S.view===p.k?"on":""}" onclick="R.go('${p.k}')">${ic(p.i)}${n?`<span class="dot"></span>`:""}<span>${p.t}</span></button>`;
     }).join("");
   },
-  render(){
+  /* anim اسم الحركة: enter لدخول صفحة، q-next و q-prev للتنقّل بين أسئلة
+     الاختبار. وبدونه يُعاد الرسم بلا حركة، كاختيار إجابة أو تبديل خيار */
+  render(anim){
     this.paintNav();
     if(S.me) setSideMeta(S.me.stats);   // وإلا بقي الشريط الجانبي على أرقام قديمة
-    const v=VIEWS[S.view]||VIEWS.home;
-    $("#view").innerHTML="";
-    $("#view").appendChild(el(topBar()));
+    const v=VIEWS[S.view]||VIEWS.home, view=$("#view");
+    view.className="";
+    view.innerHTML="";
+    view.appendChild(el(topBar()));
     v();
+    $("#tabbar").classList.toggle("pop",anim==="enter");
+    if(!anim) return;
+    [...view.children].forEach((c,i)=>c.style.setProperty("--i",i));
+    view.className=anim;
   }
 };
 function mount(html){ if(html) $("#view").appendChild(el(html)); }
@@ -681,7 +727,7 @@ async function boot(){
   $("#avatar").textContent=nm.slice(0,2);
   $("#sideName").textContent=nm;
   setSideMeta(me.stats);
-  R.render();
+  R.render("enter");
   Push.init().then(()=>{ if(S.view==="account") R.render(); });
   api("/api/settings",{body:{tz_offset:tzOffset()}}).catch(()=>{});
 }
@@ -826,7 +872,10 @@ function updateChrome(){
   R.paintNav();
   const t=document.querySelector("#view .strip");
   if(t){ const h=tilesHTML(); if(h) t.outerHTML=h; else t.remove(); }
-  else if(S.view==="home"&&tilesHTML()) R.render();   // ظهر الشريط بعد أول إجابة
+  else if(S.view==="home"&&tilesHTML()){   // ظهر الشريط بعد أول إجابة، فيُضاف تحت سؤال اليوم
+    const d=$("#dailyCard"), n=el(tilesHTML());
+    if(d){ n.classList.add("fresh"); d.after(n); } else R.render();
+  }
   setSideMeta(S.me.stats);
 }
 /* سؤال اليوم أولًا لأنه سبب فتح التطبيق. ثم ثلاثة أرقام. ثم زر واحد.
@@ -863,6 +912,12 @@ function renderDaily(){
   }
   c.innerHTML=dailyHead(q)+optsHTML(q,"answerDaily")+`<div id="dFeed"></div>`;
 }
+/* الصحيح يتوهّج والخطأ يهتزّ والشرح ينزل */
+function revealDaily(){
+  const o=$("#dailyCard .opts"), x=$("#dFeed .explain");
+  if(o) o.classList.add("reveal");
+  if(x) x.classList.add("drop");
+}
 async function answerDaily(i){
   if(S.dailyDone) return; S.dailyDone=true;
   const q=S.daily;
@@ -873,6 +928,7 @@ async function answerDaily(i){
     $("#dailyCard").querySelector(".opts").outerHTML=optsHTML(q,null,{correct:d.correct_index,picked:i});
     $("#dFeed").innerHTML=explainHTML(d,d.correct)+
       `<p class="hint" style="margin-top:12px">${ic("timer")} عد غدًا لسؤال جديد.</p>`;
+    revealDaily();
     await refreshMe(); updateChrome();
   }catch(e){ S.dailyDone=false; toast(e.error||"تعذّر إرسال الإجابة","bad"); }
 }
@@ -943,6 +999,7 @@ const Study={
       const cEl=$("#stCount"); if(cEl) cEl.textContent=qty(d.total,"q");
       if(!d.items.length){ box.innerHTML=`<div class="empty"><span class="big">🔍</span>لا توجد أسئلة مطابقة.</div>`; return; }
       box.innerHTML=d.items.map(q=>qItemHTML(q)).join("");
+      box.classList.remove("fresh"); void box.offsetWidth; box.classList.add("fresh");
     }catch(e){ box.innerHTML=`<div class="empty">${esc(e.error||"تعذّر التحميل")}</div>`; }
   },
   toggle(id){
@@ -950,6 +1007,8 @@ const Study={
     const q=sc.items.find(x=>x.id===id); if(!q) return;
     const node=document.getElementById("qi-"+id);
     if(node) node.outerHTML=qItemHTML(q);
+    const det=document.querySelector("#qi-"+id+" .det");
+    if(det) det.classList.add("drop");
   },
   async star(id,ev){
     ev.stopPropagation();
@@ -1031,11 +1090,13 @@ const Test={
     S.answers[S.tIdx]=(cur&&cur.choice===i)?null:{qid:S.test.questions[S.tIdx].id,choice:i};
     Native.tap();
     R.render();
+    const now=S.answers[S.tIdx];
+    if(now){ const b=document.querySelectorAll("#view .opts .opt")[i]; if(b) b.classList.add("bump"); }
   },
-  prev(){ if(S.tIdx>0){ S.tIdx--; R.render(); } },
+  prev(){ if(S.tIdx>0){ S.tIdx--; R.render("q-prev"); } },
   next(){
     if(S.tIdx===S.test.questions.length-1) return this.finish(false);
-    S.tIdx++; R.render();
+    S.tIdx++; R.render("q-next");
   },
   async finish(manual){
     const left=S.test.questions.length-S.answers.filter(x=>x).length;
@@ -1051,17 +1112,17 @@ const Test={
     try{
       const d=await api("/api/test/submit",{body:payload});
       d.asked=total; S.result=d; Native.result(d.total&&d.score/d.total>=.5);
-      await refreshMe(); S.stats=null; R.render();
+      await refreshMe(); S.stats=null; window.scrollTo(0,0); R.render("enter");
     }catch(e){ toast(e.error||"تعذّر إرسال النتيجة","bad"); R.render(); }
   },
   /* من بطاقة التغطية: يثبّت المادة في الإعداد ثم يبدأ فورًا */
   law(scope){ S.cfg.scope=scope; S.result=null; return this.start({scope:scope}); },
-  close(){ S.result=null; R.render(); }
+  close(){ S.result=null; R.render("enter"); }
 };
 function begin(d,useTimer){
   S.test=d; S.tIdx=0; S.answers=[]; S.result=null; S.startedAt=Date.now();
   S.remain=useTimer?d.minutes*60:0; S.useTimer=useTimer;
-  S.view="test"; R.render();
+  S.view="test"; window.scrollTo(0,0); R.render("enter");
   if(useTimer){ stopTimer(); tick(); S.timerId=setInterval(()=>{ S.remain--; tick(); if(S.remain<=0) Test.finish(false); },1000); }
 }
 function stopTimer(){ if(S.timerId){clearInterval(S.timerId);S.timerId=null;} }
@@ -1072,7 +1133,7 @@ function tick(){ const t=$("#timer"); if(!t) return;
 function renderTestRun(){
   const t=S.test,q=t.questions[S.tIdx],n=t.questions.length;
   const a=S.answers[S.tIdx], done=S.answers.filter(x=>x).length;
-  mount(`<div class="card">
+  mount(`<div class="card qcard">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px">
       <div><div class="badgerow" style="margin-bottom:4px"><div class="badge">${esc(t.scope)}</div>
         ${t.laws>1?`<div class="badge dim">${ic("grid")} ${qty(t.laws,"law")}</div>`:""}</div>
@@ -1099,11 +1160,23 @@ function shareResult(){
   const scope=d.scope&&d.scope!==S.me.all_scope?` في ${d.scope}`:"";
   Native.share(`حصلت على ${num(d.score)} من ${num(d.asked||d.total)} في اختبار قوانين اللعبة${scope}.`);
 }
+/* الرقم يعدّ من الصفر إلى النتيجة، ويبقى ثابتًا لمن طلب تقليل الحركة */
+function countUp(node,to,ms){
+  if(!node||!to||matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const t0=performance.now();
+  const step=t=>{
+    const k=Math.min(1,(t-t0)/ms), e=1-Math.pow(1-k,3);
+    node.textContent=num(Math.round(to*e));
+    if(k<1) requestAnimationFrame(step);
+  };
+  node.textContent=num(0);
+  requestAnimationFrame(step);
+}
 function renderResult(){
   const d=S.result, wrong=d.details.filter(x=>!x.correct), pctv=d.total?d.score/d.total*100:0;
   const mood=pctv>=90?["نتيجة ممتازة"]:pctv>=70?["نتيجة جيدة"]:pctv>=50?["نتيجة متوسطة"]:["تحتاج مراجعة"];
   mount(`<div class="card" style="text-align:center">
-    <div class="score" style="margin-top:6px">${num(d.score)}<span style="font-size:22px;color:var(--muted)"> من ${num(d.asked||d.total)}</span></div>
+    <div class="score" style="margin-top:6px"><span id="scoreN">${num(d.score)}</span><span style="font-size:22px;color:var(--muted)"> من ${num(d.asked||d.total)}</span></div>
     <p class="sub" style="margin-top:8px">${mood[0]}</p>
     ${d.scope?`<div class="badge dim" style="margin-bottom:14px">${esc(d.scope)}</div>`:""}
     <div class="btnrow" style="justify-content:center;margin-top:6px">
@@ -1111,6 +1184,7 @@ function renderResult(){
       ${Native.canShare?`<button class="btn soft" onclick="shareResult()">${ic("share")} مشاركة</button>`:""}
       <button class="btn soft" onclick="Test.close()">العودة</button></div>
   </div>`);
+  countUp($("#scoreN"),d.score,700);
   if(wrong.length){
     mount(`<div class="sechead"><h2>راجع أخطاءك (${num(wrong.length)})</h2></div>`);
     wrong.forEach(x=>mount(`<div class="card">
